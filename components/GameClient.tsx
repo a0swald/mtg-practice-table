@@ -36,6 +36,7 @@ export function GameClient() {
  const addManual=(name:string,p?:number,t?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,p,t)});
  const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([])};
  const blockAI=()=>{dispatch({type:'LOG',actor:'You',message:'Declared blockers; combat damage handled manually.'});dispatch({type:'SET_COMBAT',combat:undefined});};
+ const respondAI=()=>dispatch({type:'LOG',actor:'You',message:'Paused to respond to the opponent.'});
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
   <header className="flex items-center justify-between py-2"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
 
@@ -60,17 +61,17 @@ export function GameClient() {
 
     <section className="rounded-2xl border border-white/10 bg-white/[.05] p-3 shadow-2xl"><PlayerHeader name="My Battlefield" life={human.life} onLife={d=>dispatch({type:'LIFE',playerId:'player',delta:d})} meta={`${human.graveyard.length} grave · ${human.exile.length} exile`}/><Battlefield cards={human.battlefield} onCard={cardTap} selectedIds={attackers}/>
      {game.settings.tutorMode&&attackMode&&<p className="mb-3 rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">Select untapped creatures without summoning sickness. The app totals visible power, but you still decide attacks and resolve card-specific effects.</p>}
-     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Action onClick={()=>setSearchOpen(true)}>＋ PLAY CARD</Action><Action onClick={()=>setTokenOpen(true)}>＋ TOKEN</Action><Action onClick={()=>setManualOpen(true)}>＋ MANUAL</Action><Action onClick={()=>{setAttackMode(v=>!v);setAttackers([])}}>{attackMode?'CANCEL ATTACK':'⚔ COMBAT'}</Action></div>
+     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Action onClick={()=>setSearchOpen(true)}>＋ PLAY CARD</Action><Action onClick={()=>setTokenOpen(true)}>＋ TOKEN</Action><Action onClick={()=>setManualOpen(true)}>＋ MANUAL</Action><Action onClick={()=>{if(!isPlayerTurn)return;setAttackMode(v=>!v);setAttackers([])}} disabled={!isPlayerTurn}>{attackMode?'CANCEL ATTACK':'⚔ COMBAT'}</Action></div>
      {attackMode&&<button disabled={!attackers.length||Boolean(game.pendingCombat)} onClick={()=>dispatch({type:'PLAYER_ATTACK',attackerIds:attackers,defenderId:ai.id})} className="mt-2 w-full rounded-xl bg-red-500 py-3 font-black disabled:opacity-40">ATTACK WITH {attackers.length || 0}</button>}
     </section>
 
-    <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/>
+    {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">Opponent is taking their turn. Respond only when prompted.</div>}
    </div>
 
    <aside className="min-w-0 xl:sticky xl:top-3">
     <div className="space-y-3">
      <GameLog entries={game.log}/>
-     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBlock={blockAI} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
+     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBlock={blockAI} onRespond={respondAI} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
     </div>
    </aside>
   </div>
@@ -79,4 +80,4 @@ export function GameClient() {
   <CardActionSheet card={selected} onClose={()=>setSelected(undefined)} onUpdate={(patch,log)=>{if(selected)dispatch({type:'UPDATE_CARD',playerId:'player',instanceId:selected.instanceId,patch,log});setSelected(undefined)}} onMove={zone=>{if(selected)dispatch({type:'MOVE_CARD',playerId:'player',instanceId:selected.instanceId,zone});setSelected(undefined)}}/>
  </main>;
 }
-function Action({children,onClick}:{children:React.ReactNode;onClick:()=>void}){return <button onClick={onClick} className="min-h-12 rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-xs font-black">{children}</button>}
+function Action({children,onClick,disabled=false}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean}){return <button onClick={onClick} disabled={disabled} className="min-h-12 rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-35">{children}</button>}
