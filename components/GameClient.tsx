@@ -5,7 +5,7 @@ import type { CardDefinition, CardInstance } from '@/types/card';
 import type { GameState } from '@/types/game';
 import { loadGame, saveGame } from '@/lib/storage/gameStorage';
 import { createCardInstance, createToken, newGame } from '@/lib/game/utils';
-import { reduceGame, type GameAction } from '@/lib/game/reducer';
+import { reduceGame, type BlockAssignment, type GameAction } from '@/lib/game/reducer';
 import { Battlefield } from './Battlefield';
 import { PlayerHeader } from './PlayerHeader';
 import { CardActionSheet } from './CardActionSheet';
@@ -39,14 +39,15 @@ export function GameClient() {
  const addDefinition=(definition:CardDefinition)=>dispatch({type:'ADD_CARD',playerId:'player',card:createCardInstance(definition,'player','battlefield')});
  const addManual=(name:string,p?:number,t?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,p,t)});
  const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([])};
- const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Blocking incoming combat; resolving damage manually.'});
+ const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Assigning blockers for incoming combat.'});
  const beginRespond=()=>dispatch({type:'LOG',actor:'You',message:'Paused to respond to the opponent.'});
  const markCombatDamage=(card:CardInstance,delta:number)=>{
   const next=Math.max(0,card.damageMarked+delta);
   dispatch({type:'UPDATE_CARD',playerId:card.controllerId,instanceId:card.instanceId,patch:{damageMarked:next},log:`${card.name} damage marked: ${next}.`});
  };
- const finishDefense=(mode:'block'|'respond')=>{
-  dispatch({type:'LOG',actor:'You',message:mode==='block'?'Finished resolving blocks.':'Finished resolving response.'});
+ const resolveBlocks=(assignments:BlockAssignment[])=>dispatch({type:'RESOLVE_BLOCKS',assignments});
+ const finishResponse=()=>{
+  dispatch({type:'LOG',actor:'You',message:'Finished resolving response.'});
   dispatch({type:'SET_COMBAT',combat:undefined});
  };
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
@@ -77,7 +78,7 @@ export function GameClient() {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs leading-5 text-zinc-300 sm:grid-cols-3 xl:grid-cols-2"><div><span className="font-black text-zinc-100">1. Begin</span><br/>Untap, upkeep, draw.</div><div><span className="font-black text-zinc-100">2. Main</span><br/>Play a land; cast spells.</div><div><span className="font-black text-zinc-100">3. Combat</span><br/>Declare attacks and resolve blocks.</div><div><span className="font-black text-zinc-100">4. Main 2</span><br/>Play a land if unused; cast spells.</div><div><span className="font-black text-zinc-100">5. End</span><br/>Cleanup, then pass turn.</div></div>
      </section>
      <GameLog entries={game.log}/>
-     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onBeginRespond={beginRespond} onDamage={markCombatDamage} onFinishDefense={finishDefense} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
+     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onBeginRespond={beginRespond} onDamage={markCombatDamage} onResolveBlocks={resolveBlocks} onFinishResponse={finishResponse} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
    </div></aside>
   </div>
 
