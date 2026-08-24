@@ -40,20 +40,11 @@ export function GameClient() {
  const addManual=(name:string,p?:number,t?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,p,t)});
  const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([])};
  const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Assigning blockers for incoming combat.'});
- const beginRespond=()=>dispatch({type:'LOG',actor:'You',message:'Paused to respond to the opponent.'});
- const markCombatDamage=(card:CardInstance,delta:number)=>{
-  const next=Math.max(0,card.damageMarked+delta);
-  dispatch({type:'UPDATE_CARD',playerId:card.controllerId,instanceId:card.instanceId,patch:{damageMarked:next},log:`${card.name} damage marked: ${next}.`});
- };
  const resolveBlocks=(assignments:BlockAssignment[])=>dispatch({type:'RESOLVE_BLOCKS',assignments});
- const finishResponse=()=>{
-  dispatch({type:'LOG',actor:'You',message:'Finished resolving response.'});
-  dispatch({type:'SET_COMBAT',combat:undefined});
- };
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
   <header className="flex items-center justify-between py-2"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
 
-  <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)] xl:items-start xl:gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(400px,0.8fr)]">
+  <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)] xl:items-stretch xl:gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(400px,0.8fr)]">
    <div className="min-w-0 space-y-3">
     <section className="rounded-2xl border border-white/10 bg-white/[.035] p-3"><PlayerHeader name={ai.name} life={ai.life} onLife={d=>dispatch({type:'LIFE',playerId:ai.id,delta:d})} meta={`${ai.handCount} hand · ${ai.graveyard.length} grave · ${ai.exile.length} exile`}/><Battlefield cards={ai.battlefield}/></section>
 
@@ -72,13 +63,15 @@ export function GameClient() {
     {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">Opponent is taking their turn. Respond only when prompted.</div>}
    </div>
 
-   <aside className="min-w-0 xl:sticky xl:top-3"><div className="space-y-3">
-     <section className={`rounded-2xl border p-4 ${isPlayerTurn?'border-emerald-400/25 bg-emerald-400/[.05]':'border-white/10 bg-black/20 opacity-70'}`}>
+   <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3">
+     <section className={`shrink-0 rounded-2xl border p-4 ${isPlayerTurn?'border-emerald-400/25 bg-emerald-400/[.05]':'border-white/10 bg-black/20 opacity-70'}`}>
       <div className="mb-3 flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Quick Reference</div><h3 className="text-sm font-black uppercase tracking-wide text-zinc-100">On Your Turn</h3></div><span className={`h-2.5 w-2.5 rounded-full ${isPlayerTurn?'bg-emerald-400':'bg-zinc-600'}`}/></div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs leading-5 text-zinc-300 sm:grid-cols-3 xl:grid-cols-2"><div><span className="font-black text-zinc-100">1. Begin</span><br/>Untap, upkeep, draw.</div><div><span className="font-black text-zinc-100">2. Main</span><br/>Play a land; cast spells.</div><div><span className="font-black text-zinc-100">3. Combat</span><br/>Declare attacks and resolve blocks.</div><div><span className="font-black text-zinc-100">4. Main 2</span><br/>Play a land if unused; cast spells.</div><div><span className="font-black text-zinc-100">5. End</span><br/>Cleanup, then pass turn.</div></div>
      </section>
+     <div className="shrink-0">
+      <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onResolveBlocks={resolveBlocks} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
+     </div>
      <GameLog entries={game.log}/>
-     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onBeginRespond={beginRespond} onDamage={markCombatDamage} onResolveBlocks={resolveBlocks} onFinishResponse={finishResponse} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
    </div></aside>
   </div>
 
