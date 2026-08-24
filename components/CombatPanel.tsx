@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CardInstance } from '@/types/card';
 import type { PendingCombat } from '@/types/game';
+import type { BlockAssignment } from '@/lib/game/reducer';
+import { currentStats } from '@/lib/game/utils';
 
 type DefenseMode = 'block' | 'respond' | null;
 
@@ -13,7 +15,8 @@ type CombatPanelProps = {
   onBeginBlock: () => void;
   onBeginRespond: () => void;
   onDamage: (card: CardInstance, delta: number) => void;
-  onFinishDefense: (mode: Exclude<DefenseMode, null>) => void;
+  onResolveBlocks: (assignments: BlockAssignment[]) => void;
+  onFinishResponse: () => void;
   onResolvePlayer: () => void;
   onCancel: () => void;
 };
@@ -26,27 +29,38 @@ export function CombatPanel({
   onBeginBlock,
   onBeginRespond,
   onDamage,
-  onFinishDefense,
+  onResolveBlocks,
+  onFinishResponse,
   onResolvePlayer,
   onCancel,
 }: CombatPanelProps) {
   const [mode, setMode] = useState<DefenseMode>(null);
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setMode(null);
+    setAssignments({});
   }, [combat?.attackerId, combat?.defenderId, combat?.attackerInstanceIds.join('|')]);
+
+  const blockers = useMemo(
+    () => playerCards.filter(card => card.basePower !== undefined && !card.tapped),
+    [playerCards],
+  );
 
   if (!combat) return null;
 
   if (combat.source === 'ai') {
-    const blockers = playerCards.filter(card => card.basePower !== undefined);
+    const assignedBlockerIds = new Set(Object.values(assignments));
+    const unblockedDamage = attackerCards.reduce((sum, attacker) => {
+      return assignments[attacker.instanceId] ? sum : sum + cardPower(attacker);
+    }, 0);
 
     return (
       <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4">
         <div className="text-xs font-black uppercase tracking-widest text-amber-200">Incoming combat</div>
         <div className="mt-1 text-2xl font-black">{combat.totalPower} damage</div>
         <p className="mt-1 text-sm text-zinc-300">
-          Take the damage, block, or pause to resolve a response from your physical cards.
+          Take the damage, assign blockers, or pause to resolve a response from your physical cards.
         </p>
 
         {!mode ? (
@@ -68,35 +82,109 @@ export function CombatPanel({
               RESPOND
             </button>
           </div>
-        ) : (
+        ) : mode === 'block' ? (
           <div className="mt-4 space-y-4">
             <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-              <div className="text-xs font-black uppercase tracking-widest text-zinc-300">
-                {mode === 'block' ? 'Resolve blocks' : 'Resolve response'}
-              </div>
+              <div className="text-xs font-black uppercase tracking-widest text-zinc-300">Assign blockers</div>
               <p className="mt-1 text-xs leading-5 text-zinc-400">
-                Mark damage on creatures as you resolve the physical cards. Damage is temporary and clears during cleanup.
+                Choose one blocker for each attacker. Combat damage is calculated simultaneously from visible power/toughness. Lethal creatures go to the graveyard automatically.
               </p>
             </div>
 
-            {attackerCards.length > 0 && (
-              <DamageGroup title="Attacking creatures" cards={attackerCards} onDamage={onDamage} />
-            )}
+            <div className="space-y-3">
+              {attackerCards.map(attacker => {
+                const blockerId = assignments[attacker.instanceId];
+                const blocker = blockers.find(card => card.instanceId === blockerId);
+                const attackerStats = currentStats(attacker);
+                const blockerStats = blocker ? currentStats(blocker) : undefined;
+                const attackerDies = Boolean(attackerStats && blockerStats && blockerStats.power + attacker.damageMarked >= attackerStats.toughness);
+                const blockerDies = Boolean(attackerStats && blockerStats && attackerStats.power + (blocker?.damageMarked ?? 0) >= blockerStats.toughness);
 
-            {blockers.length > 0 && (
-              <DamageGroup title="Your creatures" cards={blockers} onDamage={onDamage} />
-            )}
+                return (
+                  <div key={attacker.instanceId} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-zinc-100">{attacker.name}</div>
+                        <div className="text-xs text-zinc-400">Attacker · {attackerStats ? `${attackerStats.power}/${attackerStats.toughness}` : '—'}</div>
+                      </div>
+                      <div className="text-xs font-bold text-amber-200">{blocker ? 'BLOCKED' : `${cardPower(attacker)} to you`}</div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <button
+                        onClick={() => setAssignments(current => {
+                          const next = { ...current };
+                          delete next[attacker.instanceId];
+                          return next;
+                        })}
+                        className={`rounded-lg px-2 py-2 text-xs font-bold ${!blockerId ? 'bg-amber-400 text-zinc-950' : 'bg-white/10'}`}
+                      >
+                        NO BLOCK
+                      </button>
+                      {blockers.map(candidate => {
+                        const usedElsewhere = assignedBlockerIds.has(candidate.instanceId) && blockerId !== candidate.instanceId;
+                        const stats = currentStats(candidate);
+                        return (
+                          <button
+                            key={candidate.instanceId}
+                            disabled={usedElsewhere}
+                            onClick={() => setAssignments(current => ({ ...current, [attacker.instanceId]: candidate.instanceId }))}
+                            className={`rounded-lg px-2 py-2 text-left text-xs font-bold disabled:opacity-30 ${blockerId === candidate.instanceId ? 'bg-emerald-400 text-zinc-950' : 'bg-white/10'}`}
+                          >
+                            <span className="block truncate">{candidate.name}</span>
+                            <span className="text-[10px] opacity-75">{stats ? `${stats.power}/${stats.toughness}` : '—'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {blocker && attackerStats && blockerStats && (
+                      <div className="mt-3 rounded-lg bg-white/[.05] px-3 py-2 text-xs text-zinc-300">
+                        {blocker.name} deals <strong>{blockerStats.power}</strong> to {attacker.name}; {attacker.name} deals <strong>{attackerStats.power}</strong> to {blocker.name}.
+                        <div className="mt-1 font-bold">
+                          {attackerDies ? `${attacker.name} will be destroyed. ` : `${attacker.name} survives. `}
+                          {blockerDies ? `${blocker.name} will be destroyed.` : `${blocker.name} survives.`}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm">
+              Unblocked damage to you: <strong>{unblockedDamage}</strong>
+            </div>
 
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => onFinishDefense(mode)}
+                onClick={() => onResolveBlocks(Object.entries(assignments).map(([attackerId, blockerId]) => ({ attackerId, blockerId })))}
                 className="rounded-xl bg-emerald-400 px-3 py-3 font-black text-zinc-950"
               >
-                FINISH {mode === 'block' ? 'BLOCK' : 'RESPONSE'}
+                RESOLVE COMBAT
               </button>
-              <button onClick={() => setMode(null)} className="rounded-xl bg-white/10 px-3 py-3 font-bold">
+              <button onClick={() => { setMode(null); setAssignments({}); }} className="rounded-xl bg-white/10 px-3 py-3 font-bold">
                 BACK
               </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="text-xs font-black uppercase tracking-widest text-zinc-300">Resolve response</div>
+              <p className="mt-1 text-xs leading-5 text-zinc-400">
+                Mark damage or other results from the physical response manually. Damage remains temporary and clears during cleanup.
+              </p>
+            </div>
+
+            {attackerCards.length > 0 && <DamageGroup title="Attacking creatures" cards={attackerCards} onDamage={onDamage} />}
+            {blockers.length > 0 && <DamageGroup title="Your creatures" cards={blockers} onDamage={onDamage} />}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={onFinishResponse} className="rounded-xl bg-emerald-400 px-3 py-3 font-black text-zinc-950">
+                FINISH RESPONSE
+              </button>
+              <button onClick={() => setMode(null)} className="rounded-xl bg-white/10 px-3 py-3 font-bold">BACK</button>
             </div>
           </div>
         )}
@@ -107,15 +195,17 @@ export function CombatPanel({
   return (
     <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4">
       <div className="font-black">Attack declared for {combat.totalPower}</div>
-      <p className="mt-1 text-sm text-zinc-300">
-        Confirm damage after handling physical blockers and responses at the table.
-      </p>
+      <p className="mt-1 text-sm text-zinc-300">Confirm damage after handling physical blockers and responses at the table.</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button onClick={onResolvePlayer} className="rounded-xl bg-emerald-400 py-3 font-black text-black">DEAL DAMAGE</button>
         <button onClick={onCancel} className="rounded-xl bg-white/10 py-3 font-bold">CANCEL</button>
       </div>
     </div>
   );
+}
+
+function cardPower(card: CardInstance): number {
+  return currentStats(card)?.power ?? 0;
 }
 
 function DamageGroup({ title, cards, onDamage }: { title: string; cards: CardInstance[]; onDamage: (card: CardInstance, delta: number) => void }) {
@@ -130,17 +220,9 @@ function DamageGroup({ title, cards, onDamage }: { title: string; cards: CardIns
               <div className="text-xs text-zinc-400">Damage marked: {card.damageMarked}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <button
-                disabled={card.damageMarked <= 0}
-                onClick={() => onDamage(card, -1)}
-                className="h-9 w-9 rounded-lg bg-white/10 text-lg font-black disabled:opacity-30"
-              >
-                −
-              </button>
+              <button disabled={card.damageMarked <= 0} onClick={() => onDamage(card, -1)} className="h-9 w-9 rounded-lg bg-white/10 text-lg font-black disabled:opacity-30">−</button>
               <span className="min-w-6 text-center text-sm font-black">{card.damageMarked}</span>
-              <button onClick={() => onDamage(card, 1)} className="h-9 w-9 rounded-lg bg-red-500/80 text-lg font-black">
-                +
-              </button>
+              <button onClick={() => onDamage(card, 1)} className="h-9 w-9 rounded-lg bg-red-500/80 text-lg font-black">+</button>
             </div>
           </div>
         ))}
