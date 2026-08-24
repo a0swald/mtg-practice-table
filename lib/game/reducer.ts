@@ -3,6 +3,11 @@ import type { GameState, PendingCombat } from '@/types/game';
 import { runAITurn } from '@/lib/ai/turn';
 import { uid } from './utils';
 
+export type BlockAssignment = {
+  attackerId: string;
+  blockerId: string;
+};
+
 export type GameAction =
   | { type: 'LIFE'; playerId: string; delta: number }
   | { type: 'ADD_CARD'; playerId: string; card: CardInstance }
@@ -11,6 +16,7 @@ export type GameAction =
   | { type: 'PASS_TURN' }
   | { type: 'SET_COMBAT'; combat?: PendingCombat }
   | { type: 'RESOLVE_AI_DAMAGE'; amount: number }
+  | { type: 'RESOLVE_BLOCKS'; assignments: BlockAssignment[] }
   | { type: 'PLAYER_ATTACK'; attackerIds: string[]; defenderId: string }
   | { type: 'LOG'; actor: string; message: string };
 
@@ -41,6 +47,38 @@ function startPlayerTurn(game: GameState): GameState {
   });
   withLog(game, 'You', 'Turn started.');
   return game;
+}
+
+function cardPower(card: CardInstance): number {
+  return (card.basePower ?? 0)
+    + card.plusOneCounters
+    - card.minusOneCounters
+    + card.temporaryPowerModifier;
+}
+
+function cardToughness(card: CardInstance): number {
+  return (card.baseToughness ?? 0)
+    + card.plusOneCounters
+    - card.minusOneCounters
+    + card.temporaryToughnessModifier;
+}
+
+function moveLethalCreatures(game: GameState) {
+  game.players.forEach(player => {
+    const survivors: CardInstance[] = [];
+    player.battlefield.forEach(card => {
+      const isCreature = card.baseToughness !== undefined;
+      const lethal = isCreature && card.damageMarked >= cardToughness(card);
+      if (lethal) {
+        card.zone = 'graveyard';
+        player.graveyard.push(card);
+        withLog(game, 'Combat', `${card.name} was destroyed by lethal damage.`);
+      } else {
+        survivors.push(card);
+      }
+    });
+    player.battlefield = survivors;
+  });
 }
 
 export function reduceGame(input: GameState, action: GameAction): GameState {
@@ -94,10 +132,7 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
     if (player) {
       const cards = player.battlefield.filter(card => action.attackerIds.includes(card.instanceId));
       cards.forEach(card => { card.tapped = true; });
-      const total = cards.reduce(
-        (sum, card) => sum + ((card.basePower ?? 0) + card.plusOneCounters - card.minusOneCounters + card.temporaryPowerModifier),
-        0,
-      );
+      const total = cards.reduce((sum, card) => sum + cardPower(card), 0);
       game.pendingCombat = {
         attackerId: player.id,
         defenderId: action.defenderId,
@@ -123,6 +158,47 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
     }
     game.pendingCombat = undefined;
     if (game.activePlayerId !== 'player') return startPlayerTurn(game);
+  }
+
+  if (action.type === 'RESOLVE_BLOCKS') {
+    const combat = game.pendingCombat;
+    const human = getPlayer('player');
+    const attackerPlayer = combat ? getPlayer(combat.attackerId) : undefined;
+
+    if (combat?.source === 'ai' && human && attackerPlayer) {
+      const assignmentByAttacker = new Map(action.assignments.map(entry => [entry.attackerId, entry.blockerId]));
+      let unblockedDamage = 0;
+
+      combat.attackerInstanceIds.forEach(attackerId => {
+        const attacker = attackerPlayer.battlefield.find(card => card.instanceId === attackerId);
+        if (!attacker) return;
+
+        const blockerId = assignmentByAttacker.get(attackerId);
+        const blocker = blockerId ? human.battlefield.find(card => card.instanceId === blockerId) : undefined;
+
+        if (!blocker) {
+          unblockedDamage += cardPower(attacker);
+          withLog(game, 'Combat', `${attacker.name} was unblocked for ${cardPower(attacker)} damage.`);
+          return;
+        }
+
+        const attackerDamage = cardPower(blocker);
+        const blockerDamage = cardPower(attacker);
+        attacker.damageMarked += attackerDamage;
+        blocker.damageMarked += blockerDamage;
+        withLog(game, 'Combat', `${blocker.name} blocked ${attacker.name}: ${attackerDamage} damage to attacker, ${blockerDamage} damage to blocker.`);
+      });
+
+      if (unblockedDamage > 0) {
+        const old = human.life;
+        human.life -= unblockedDamage;
+        withLog(game, 'Combat', `You took ${unblockedDamage} unblocked damage (${old} → ${human.life}).`);
+      }
+
+      moveLethalCreatures(game);
+      game.pendingCombat = undefined;
+      return startPlayerTurn(game);
+    }
   }
 
   if (action.type === 'LOG') withLog(game, action.actor, action.message);
