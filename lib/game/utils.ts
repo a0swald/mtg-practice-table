@@ -9,10 +9,26 @@ export function numericStat(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function entersTapped(definition: CardDefinition): boolean {
+  const oracle = definition.oracleText?.toLowerCase() ?? '';
+  if (!oracle) return false;
+
+  const name = definition.name.toLowerCase();
+  const normalized = oracle.replaceAll('~', name);
+
+  return (
+    normalized.includes('enters the battlefield tapped') ||
+    normalized.includes('enters tapped') ||
+    normalized.includes(`${name} enters the battlefield tapped`) ||
+    normalized.includes(`${name} enters tapped`)
+  );
+}
+
 export function createCardInstance(definition: CardDefinition, ownerId: string, zone: CardInstance['zone'] = 'battlefield'): CardInstance {
   const creature = definition.typeLine.toLowerCase().includes('creature');
+  const tappedOnEntry = zone === 'battlefield' && entersTapped(definition);
   return {
-    instanceId: uid(), cardId: definition.id, definition, name: definition.name, zone, tapped: false,
+    instanceId: uid(), cardId: definition.id, definition, name: definition.name, zone, tapped: tappedOnEntry,
     basePower: numericStat(definition.power), baseToughness: numericStat(definition.toughness),
     plusOneCounters: 0, minusOneCounters: 0, damageMarked: 0,
     temporaryPowerModifier: 0, temporaryToughnessModifier: 0, customCounters: [],
