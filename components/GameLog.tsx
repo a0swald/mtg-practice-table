@@ -1,0 +1,2 @@
+import type { LogEntry } from '@/types/game';
+export function GameLog({entries}:{entries:LogEntry[]}){return <section className="rounded-2xl border border-white/10 bg-black/20 p-3"><h3 className="mb-2 text-xs font-black uppercase tracking-widest text-zinc-400">Game log</h3><div className="max-h-40 space-y-2 overflow-y-auto text-sm">{entries.slice(-12).reverse().map(e=><div key={e.id}><span className="font-bold">T{e.turn} · {e.actor}</span><span className="text-zinc-400"> — {e.message}</span></div>)}</div></section>}

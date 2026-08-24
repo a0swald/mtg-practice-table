@@ -1,0 +1,7 @@
+'use client';
+import { useState } from 'react';
+export function ManualCardCreator({open,onClose,onAdd}:{open:boolean;onClose:()=>void;onAdd:(name:string,p?:number,t?:number)=>void}){
+ const [name,setName]=useState('');const [power,setPower]=useState('');const [toughness,setToughness]=useState('');
+ if(!open)return null; const submit=()=>{if(!name.trim())return;onAdd(name.trim(),power?Number(power):undefined,toughness?Number(toughness):undefined);setName('');setPower('');setToughness('');onClose()};
+ return <div className="fixed inset-0 z-50 flex items-end bg-black/70"><div className="safe-bottom w-full rounded-t-3xl bg-[#181b1e] p-4"><h2 className="text-xl font-black">Manual Card</h2><div className="mt-4 space-y-3"><input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" className="w-full rounded-xl bg-black/30 px-4 py-3"/><div className="grid grid-cols-2 gap-2"><input inputMode="numeric" value={power} onChange={e=>setPower(e.target.value)} placeholder="Power" className="rounded-xl bg-black/30 px-4 py-3"/><input inputMode="numeric" value={toughness} onChange={e=>setToughness(e.target.value)} placeholder="Toughness" className="rounded-xl bg-black/30 px-4 py-3"/></div></div><button onClick={submit} className="mt-4 w-full rounded-xl bg-emerald-400 py-3 font-black text-black">ADD TO BATTLEFIELD</button><button onClick={onClose} className="mt-2 w-full rounded-xl bg-white/10 py-3 font-bold">Cancel</button></div></div>
+}

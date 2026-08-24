@@ -1,0 +1,8 @@
+'use client';
+import type { CardInstance } from '@/types/card';
+import type { PendingCombat } from '@/types/game';
+export function CombatPanel({combat,playerCards,onTake,onBlock,onResolvePlayer,onCancel}:{combat?:PendingCombat;playerCards:CardInstance[];onTake:(n:number)=>void;onBlock:()=>void;onResolvePlayer:()=>void;onCancel:()=>void}){
+ if(!combat)return null;
+ if(combat.source==='ai') return <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4"><div className="text-xs font-black uppercase tracking-widest text-amber-200">Incoming combat</div><div className="mt-1 text-2xl font-black">{combat.totalPower} damage</div><div className="mt-3 grid grid-cols-3 gap-2"><button onClick={()=>onTake(combat.totalPower)} className="rounded-xl bg-red-500 px-3 py-3 font-black">TAKE {combat.totalPower}</button><button disabled={playerCards.length===0} onClick={onBlock} className="rounded-xl bg-white/10 px-3 py-3 font-bold disabled:opacity-40">BLOCK</button><button onClick={onCancel} className="rounded-xl bg-white/10 px-3 py-3 font-bold">RESPOND</button></div></div>;
+ return <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4"><div className="font-black">Attack declared for {combat.totalPower}</div><p className="mt-1 text-sm text-zinc-300">For MVP, confirm damage after handling physical blockers/responses at the table.</p><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={onResolvePlayer} className="rounded-xl bg-emerald-400 py-3 font-black text-black">DEAL DAMAGE</button><button onClick={onCancel} className="rounded-xl bg-white/10 py-3 font-bold">CANCEL</button></div></div>
+}
