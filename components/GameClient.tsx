@@ -70,6 +70,22 @@ export function GameClient() {
 
    <aside className="min-w-0 xl:sticky xl:top-3">
     <div className="space-y-3">
+     <section className={`rounded-2xl border p-4 ${isPlayerTurn?'border-emerald-400/25 bg-emerald-400/[.05]':'border-white/10 bg-black/20 opacity-70'}`}>
+      <div className="mb-3 flex items-center justify-between">
+       <div>
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Quick Reference</div>
+        <h3 className="text-sm font-black uppercase tracking-wide text-zinc-100">On Your Turn</h3>
+       </div>
+       <span className={`h-2.5 w-2.5 rounded-full ${isPlayerTurn?'bg-emerald-400':'bg-zinc-600'}`}/>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs leading-5 text-zinc-300 sm:grid-cols-3 xl:grid-cols-2">
+       <div><span className="font-black text-zinc-100">1. Begin</span><br/>Untap, upkeep, draw.</div>
+       <div><span className="font-black text-zinc-100">2. Main</span><br/>Play a land; cast spells.</div>
+       <div><span className="font-black text-zinc-100">3. Combat</span><br/>Declare attacks and resolve blocks.</div>
+       <div><span className="font-black text-zinc-100">4. Main 2</span><br/>Play a land if unused; cast spells.</div>
+       <div><span className="font-black text-zinc-100">5. End</span><br/>Cleanup, then pass turn.</div>
+      </div>
+     </section>
      <GameLog entries={game.log}/>
      <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBlock={blockAI} onRespond={respondAI} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
     </div>
