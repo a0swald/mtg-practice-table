@@ -32,12 +32,23 @@ export function GameClient() {
  const combatUnavailableIds=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&(c.tapped||c.summoningSick)).map(c=>c.instanceId)??[],[human]);
  if(!game||!human||!ai)return <div className="flex min-h-screen items-center justify-center text-zinc-400">Loading game…</div>;
  const isPlayerTurn=game.activePlayerId==='player';
+ const incomingAttackers=game.pendingCombat?.source==='ai'
+  ? ai.battlefield.filter(card=>game.pendingCombat?.attackerInstanceIds.includes(card.instanceId))
+  : [];
  const cardTap=(card:CardInstance)=>{if(attackMode){if(eligible.some(c=>c.instanceId===card.instanceId)){setAttackers(a=>a.includes(card.instanceId)?a.filter(id=>id!==card.instanceId):[...a,card.instanceId]);}return;}setSelected(card)};
  const addDefinition=(definition:CardDefinition)=>dispatch({type:'ADD_CARD',playerId:'player',card:createCardInstance(definition,'player','battlefield')});
  const addManual=(name:string,p?:number,t?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,p,t)});
  const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([])};
- const blockAI=()=>{dispatch({type:'LOG',actor:'You',message:'Declared blockers; combat damage handled manually.'});dispatch({type:'SET_COMBAT',combat:undefined});};
- const respondAI=()=>dispatch({type:'LOG',actor:'You',message:'Paused to respond to the opponent.'});
+ const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Blocking incoming combat; resolving damage manually.'});
+ const beginRespond=()=>dispatch({type:'LOG',actor:'You',message:'Paused to respond to the opponent.'});
+ const markCombatDamage=(card:CardInstance,delta:number)=>{
+  const next=Math.max(0,card.damageMarked+delta);
+  dispatch({type:'UPDATE_CARD',playerId:card.controllerId,instanceId:card.instanceId,patch:{damageMarked:next},log:`${card.name} damage marked: ${next}.`});
+ };
+ const finishDefense=(mode:'block'|'respond')=>{
+  dispatch({type:'LOG',actor:'You',message:mode==='block'?'Finished resolving blocks.':'Finished resolving response.'});
+  dispatch({type:'SET_COMBAT',combat:undefined});
+ };
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
   <header className="flex items-center justify-between py-2"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
 
@@ -66,7 +77,7 @@ export function GameClient() {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs leading-5 text-zinc-300 sm:grid-cols-3 xl:grid-cols-2"><div><span className="font-black text-zinc-100">1. Begin</span><br/>Untap, upkeep, draw.</div><div><span className="font-black text-zinc-100">2. Main</span><br/>Play a land; cast spells.</div><div><span className="font-black text-zinc-100">3. Combat</span><br/>Declare attacks and resolve blocks.</div><div><span className="font-black text-zinc-100">4. Main 2</span><br/>Play a land if unused; cast spells.</div><div><span className="font-black text-zinc-100">5. End</span><br/>Cleanup, then pass turn.</div></div>
      </section>
      <GameLog entries={game.log}/>
-     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBlock={blockAI} onRespond={respondAI} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
+     <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onBeginRespond={beginRespond} onDamage={markCombatDamage} onFinishDefense={finishDefense} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
    </div></aside>
   </div>
 
