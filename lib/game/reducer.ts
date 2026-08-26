@@ -1,5 +1,5 @@
 import type { CardInstance, Zone } from '@/types/card';
-import type { GameState, PendingCombat } from '@/types/game';
+import type { CombatBlock, GameState, PendingCombat } from '@/types/game';
 import { continueAITurn, runAITurn } from '@/lib/ai/turn';
 import { createToken, uid } from './utils';
 
@@ -66,6 +66,10 @@ function cardToughness(card: CardInstance): number {
   return (card.baseToughness ?? 0) + card.plusOneCounters - card.minusOneCounters + card.temporaryToughnessModifier;
 }
 
+function creatureValue(card: CardInstance): number {
+  return cardPower(card) * 2 + cardToughness(card) + card.plusOneCounters * 2;
+}
+
 function moveLethalCreatures(game: GameState) {
   game.players.forEach(player => {
     const survivors: CardInstance[] = [];
@@ -80,6 +84,100 @@ function moveLethalCreatures(game: GameState) {
     });
     player.battlefield = survivors;
   });
+}
+
+function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: string): CombatBlock[] {
+  const defender = game.players.find(player => player.id === defenderId);
+  if (!defender?.isAI) return [];
+
+  const available = defender.battlefield.filter(card => card.basePower !== undefined && !card.tapped);
+  if (!available.length) return [];
+
+  const used = new Set<string>();
+  const assignments: CombatBlock[] = [];
+  const incomingPower = attackers.reduce((sum, card) => sum + cardPower(card), 0);
+  const lifePressure = defender.life <= incomingPower + 4;
+
+  const orderedAttackers = attackers.slice().sort((a, b) => creatureValue(b) - creatureValue(a));
+
+  for (const attacker of orderedAttackers) {
+    const candidates = available.filter(blocker => !used.has(blocker.instanceId));
+    if (!candidates.length) break;
+
+    const aPower = cardPower(attacker);
+    const aToughness = cardToughness(attacker);
+
+    const ranked = candidates.map(blocker => {
+      const bPower = cardPower(blocker);
+      const bToughness = cardToughness(blocker);
+      const attackerDies = bPower + attacker.damageMarked >= aToughness;
+      const blockerDies = aPower + blocker.damageMarked >= bToughness;
+      const profitable = attackerDies && !blockerDies;
+      const trade = attackerDies && blockerDies;
+      const badBlock = !attackerDies && blockerDies;
+      const valueSwing = creatureValue(attacker) - creatureValue(blocker);
+
+      let score = 0;
+      if (profitable) score += 100 + valueSwing;
+      else if (trade) score += 45 + valueSwing;
+      else if (!blockerDies) score += lifePressure ? 35 : 12;
+      else if (lifePressure) score += 10;
+      else score -= 80;
+
+      if (game.settings.difficulty === 'learning' && badBlock && !lifePressure) score -= 30;
+      if (game.settings.difficulty === 'challenging' && attackerDies) score += 15;
+
+      return { blocker, score, attackerDies, blockerDies, profitable, trade };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = ranked[0];
+    const shouldBlock = best && (best.score > 0 || lifePressure);
+    if (!best || !shouldBlock) continue;
+
+    const blocker = best.blocker;
+    used.add(blocker.instanceId);
+
+    let reason = 'Blocks to reduce incoming damage.';
+    if (best.profitable) reason = `${blocker.name} can defeat ${attacker.name} and survive.`;
+    else if (best.trade) reason = `Trading ${blocker.name} for ${attacker.name} is worthwhile.`;
+    else if (lifePressure) reason = 'Life total is under pressure, so the AI is willing to block defensively.';
+    else if (!best.blockerDies) reason = `${blocker.name} can absorb the attack and survive.`;
+
+    assignments.push({
+      attackerId: attacker.instanceId,
+      blockerId: blocker.instanceId,
+      attackerName: attacker.name,
+      blockerName: blocker.name,
+      attackerPower: aPower,
+      attackerToughness: aToughness,
+      blockerPower: cardPower(blocker),
+      blockerToughness: cardToughness(blocker),
+      reason,
+    });
+  }
+
+  return assignments;
+}
+
+function resolvePlayerBlocks(game: GameState, combat: PendingCombat) {
+  if (combat.source !== 'player' || !combat.aiBlocks?.length) return;
+  const attackerPlayer = game.players.find(player => player.id === combat.attackerId);
+  const defender = game.players.find(player => player.id === combat.defenderId);
+  if (!attackerPlayer || !defender) return;
+
+  combat.aiBlocks.forEach(block => {
+    const attacker = attackerPlayer.battlefield.find(card => card.instanceId === block.attackerId);
+    const blocker = defender.battlefield.find(card => card.instanceId === block.blockerId);
+    if (!attacker || !blocker) return;
+
+    const damageToAttacker = cardPower(blocker);
+    const damageToBlocker = cardPower(attacker);
+    attacker.damageMarked += damageToAttacker;
+    blocker.damageMarked += damageToBlocker;
+    withLog(game, 'Combat', `${block.blockerName} blocked ${block.attackerName}: ${damageToAttacker} damage to attacker, ${damageToBlocker} damage to blocker.`);
+  });
+
+  moveLethalCreatures(game);
 }
 
 export function reduceGame(input: GameState, action: GameAction): GameState {
@@ -143,9 +241,27 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
     if (player) {
       const cards = player.battlefield.filter(card => action.attackerIds.includes(card.instanceId));
       cards.forEach(card => { card.tapped = true; });
-      const total = cards.reduce((sum, card) => sum + cardPower(card), 0);
-      game.pendingCombat = { attackerId: player.id, defenderId: action.defenderId, attackerInstanceIds: action.attackerIds, totalPower: total, source: 'player' };
-      withLog(game, player.name, `Attacks for ${total}.`);
+      const aiBlocks = chooseAIBlocks(game, cards, action.defenderId);
+      const blockedIds = new Set(aiBlocks.map(block => block.attackerId));
+      const unblockedTotal = cards
+        .filter(card => !blockedIds.has(card.instanceId))
+        .reduce((sum, card) => sum + cardPower(card), 0);
+
+      game.pendingCombat = {
+        attackerId: player.id,
+        defenderId: action.defenderId,
+        attackerInstanceIds: action.attackerIds,
+        totalPower: unblockedTotal,
+        source: 'player',
+        aiBlocks,
+      };
+
+      withLog(game, player.name, `Declared ${cards.length} attacker${cards.length === 1 ? '' : 's'}.`);
+      if (aiBlocks.length) {
+        aiBlocks.forEach(block => withLog(game, 'Opponent', `${block.blockerName} blocks ${block.attackerName}.`));
+      } else {
+        withLog(game, 'Opponent', 'No blocks declared.');
+      }
     }
   }
 
@@ -193,6 +309,8 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
   }
 
   if (action.type === 'SET_COMBAT') {
+    const previousCombat = game.pendingCombat;
+    if (!action.combat && previousCombat?.source === 'player') resolvePlayerBlocks(game, previousCombat);
     game.pendingCombat = action.combat;
     if (!action.combat && game.activePlayerId !== 'player' && !game.pendingAIAction) return startPlayerTurn(game);
   }
