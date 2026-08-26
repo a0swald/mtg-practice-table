@@ -37,6 +37,10 @@ function snapshot(room) {
   };
 }
 
+function usedColors(room) {
+  return Array.from(room.players.values()).map(player => String(player.color || '').toLowerCase()).filter(Boolean);
+}
+
 function broadcast(room) {
   io.to(`table:${room.code}`).emit('shared:state', snapshot(room));
 }
@@ -69,11 +73,21 @@ io.on('connection', socket => {
     }
   });
 
+  socket.on('shared:preview', ({ code }, ack) => {
+    const normalized = String(code || '').trim();
+    const room = rooms.get(normalized);
+    if (!room) return ack?.({ ok: false, error: 'Table code not found.', colors: [] });
+    ack?.({ ok: true, colors: usedColors(room) });
+  });
+
   socket.on('shared:join', ({ code, player }, ack) => {
     const normalized = String(code || '').trim();
     const room = rooms.get(normalized);
     if (!room) return ack?.({ ok: false, error: 'Table code not found.' });
     if (!player?.id) return ack?.({ ok: false, error: 'A player is required.' });
+    const color = String(player.color || '').toLowerCase();
+    if (!color) return ack?.({ ok: false, error: 'Choose a player color.' });
+    if (usedColors(room).includes(color)) return ack?.({ ok: false, error: 'That player color is already taken.' });
 
     room.players.set(player.id, player);
     attach(socket, room, player.id);
