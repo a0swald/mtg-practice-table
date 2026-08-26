@@ -29,36 +29,104 @@ export function Battlefield({
   }
 
   const groups = groupCards(cards);
+  const creatures = groups.find(group => group.key === 'creatures')!;
+  const artifacts = groups.find(group => group.key === 'artifacts')!;
+  const enchantments = groups.find(group => group.key === 'enchantments')!;
+  const lands = groups.find(group => group.key === 'lands')!;
+  const other = groups.find(group => group.key === 'other')!;
 
   return (
     <div className="min-h-40 space-y-3 px-1 py-4">
-      {groups.map(group => (
-        <section
-          key={group.key}
-          className={`w-full min-w-0 rounded-xl border border-white/[.07] bg-black/[.08] p-2.5 ${group.cards.length === 0 ? 'hidden sm:block' : ''}`}
-        >
-          <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{group.label}</span>
-            <span className="text-[10px] font-bold text-zinc-600">{group.cards.length}</span>
-          </div>
-          {group.cards.length > 0 ? (
-            <div className="scrollbar-none flex min-h-28 w-full gap-3 overflow-x-auto px-1 pb-1 pt-1">
-              {group.cards.map(card => (
-                <CardVisual
-                  key={card.instanceId}
-                  card={card}
-                  selected={selectedIds.includes(card.instanceId)}
-                  combatUnavailable={combatMode && combatUnavailableIds.includes(card.instanceId)}
-                  onClick={() => onCard?.(card)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex min-h-20 items-center justify-center text-xs text-zinc-700">Empty</div>
-          )}
-        </section>
-      ))}
+      <BattlefieldSection
+        group={creatures}
+        onCard={onCard}
+        selectedIds={selectedIds}
+        combatMode={combatMode}
+        combatUnavailableIds={combatUnavailableIds}
+        showWhenEmpty
+      />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <BattlefieldSection
+          group={artifacts}
+          onCard={onCard}
+          selectedIds={selectedIds}
+          combatMode={combatMode}
+          combatUnavailableIds={combatUnavailableIds}
+          showWhenEmpty
+        />
+        <BattlefieldSection
+          group={enchantments}
+          onCard={onCard}
+          selectedIds={selectedIds}
+          combatMode={combatMode}
+          combatUnavailableIds={combatUnavailableIds}
+          showWhenEmpty
+        />
+      </div>
+
+      {lands.cards.length > 0 && (
+        <BattlefieldSection
+          group={lands}
+          onCard={onCard}
+          selectedIds={selectedIds}
+          combatMode={combatMode}
+          combatUnavailableIds={combatUnavailableIds}
+        />
+      )}
+
+      {other.cards.length > 0 && (
+        <BattlefieldSection
+          group={other}
+          onCard={onCard}
+          selectedIds={selectedIds}
+          combatMode={combatMode}
+          combatUnavailableIds={combatUnavailableIds}
+        />
+      )}
     </div>
+  );
+}
+
+function BattlefieldSection({
+  group,
+  onCard,
+  selectedIds,
+  combatMode,
+  combatUnavailableIds,
+  showWhenEmpty = false,
+}: {
+  group: BattlefieldGroup;
+  onCard?: (card: CardInstance) => void;
+  selectedIds: string[];
+  combatMode: boolean;
+  combatUnavailableIds: string[];
+  showWhenEmpty?: boolean;
+}) {
+  if (!showWhenEmpty && group.cards.length === 0) return null;
+
+  return (
+    <section className="w-full min-w-0 rounded-xl border border-white/[.07] bg-black/[.08] p-2.5">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{group.label}</span>
+        <span className="text-[10px] font-bold text-zinc-600">{group.cards.length}</span>
+      </div>
+      {group.cards.length > 0 ? (
+        <div className="scrollbar-none flex min-h-28 w-full gap-3 overflow-x-auto px-1 pb-1 pt-1">
+          {group.cards.map(card => (
+            <CardVisual
+              key={card.instanceId}
+              card={card}
+              selected={selectedIds.includes(card.instanceId)}
+              combatUnavailable={combatMode && combatUnavailableIds.includes(card.instanceId)}
+              onClick={() => onCard?.(card)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-20 items-center justify-center text-xs text-zinc-700">Empty</div>
+      )}
+    </section>
   );
 }
 
@@ -91,5 +159,5 @@ function groupCards(cards: CardInstance[]): BattlefieldGroup[] {
     { key: 'enchantments', label: 'Enchantments', cards: enchantments },
     { key: 'lands', label: 'Lands', cards: lands },
     { key: 'other', label: 'Other Permanents', cards: other },
-  ].filter(group => group.cards.length > 0 || group.key === 'creatures' || group.key === 'artifacts');
+  ];
 }
