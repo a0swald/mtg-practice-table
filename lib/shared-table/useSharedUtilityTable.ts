@@ -38,6 +38,8 @@ export type SharedSession = { code: string; playerId: string; host: boolean };
 
 type Ack = { ok: boolean; error?: string; room?: SharedRoom; playerId?: string; host?: boolean };
 const SESSION_KEY = 'mtg-practice-shared-table-v1';
+const HUD_KEY = 'mtg-practice-shared-table-hud-v1';
+const HUD_EVENT = 'mtg-practice:shared-table-hud';
 
 function newId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -54,9 +56,38 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
 
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  function applyRoom(nextRoom: SharedRoom) {
+  function publishHud(nextRoom: SharedRoom | null, nextSession: SharedSession | null) {
+    if (!nextRoom || !nextSession) {
+      localStorage.removeItem(HUD_KEY);
+      window.dispatchEvent(new CustomEvent(HUD_EVENT, { detail: null }));
+      return;
+    }
+
+    const payload = {
+      code: nextRoom.code,
+      playerId: nextSession.playerId,
+      players: nextRoom.players.map(player => {
+        const member = nextRoom.members.find(item => item.playerId === player.id);
+        return {
+          id: player.id,
+          name: player.name,
+          life: player.life,
+          color: player.color,
+          connected: Boolean(member?.connected),
+          host: Boolean(member?.host),
+          you: player.id === nextSession.playerId,
+          orientation: player.orientation ?? 'auto',
+        };
+      }),
+    };
+    localStorage.setItem(HUD_KEY, JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent(HUD_EVENT, { detail: payload }));
+  }
+
+  function applyRoom(nextRoom: SharedRoom, nextSession: SharedSession | null = session) {
     setRoom(nextRoom);
     setState(current => current ? { ...current, players: nextRoom.players } : current);
+    publishHud(nextRoom, nextSession);
   }
 
   useEffect(() => {
@@ -73,14 +104,16 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
         socket.emit('shared:rejoin', { ...saved, player }, (ack: Ack) => {
           if (!ack.ok || !ack.room || !ack.playerId) {
             localStorage.removeItem(SESSION_KEY);
+            publishHud(null, null);
             return;
           }
           const next = { code: ack.room.code, playerId: ack.playerId, host: Boolean(ack.host) };
           setSession(next);
-          applyRoom(ack.room);
+          applyRoom(ack.room, next);
         });
       } catch {
         localStorage.removeItem(SESSION_KEY);
+        publishHud(null, null);
       }
     });
 
@@ -101,6 +134,10 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     socketRef.current.emit('shared:player:update', { code: session.code, playerId: session.playerId, player });
   }, [session, state]);
 
+  useEffect(() => {
+    publishHud(room, session);
+  }, [room, session]);
+
   async function host(name?: string) {
     const socket = socketRef.current;
     const base = stateRef.current?.players[0];
@@ -113,7 +150,7 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
       const next = { code: ack.room.code, playerId: ack.playerId, host: true };
       localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       setSession(next);
-      applyRoom(ack.room);
+      applyRoom(ack.room, next);
     });
   }
 
@@ -131,7 +168,7 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
       const next = { code: ack.room.code, playerId: ack.playerId, host: Boolean(ack.host) };
       localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       setSession(next);
-      applyRoom(ack.room);
+      applyRoom(ack.room, next);
     });
   }
 
@@ -140,6 +177,7 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     const own = stateRef.current?.players.find(player => player.id === session?.playerId);
     if (own) setState(current => current ? { ...current, players: [own] } : current);
     localStorage.removeItem(SESSION_KEY);
+    publishHud(null, null);
     setSession(null);
     setRoom(null);
     setError('');
