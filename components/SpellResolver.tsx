@@ -3,24 +3,30 @@
 import { useState } from 'react';
 import type { CardDefinition, CardInstance } from '@/types/card';
 import { currentStats } from '@/lib/game/utils';
+import { parseSimpleOracleEffects } from '@/lib/game/oracleEffects';
 
 type SpellResolverProps = {
   spell?: CardDefinition;
   opponentName: string;
   opponentLife: number;
   opponentCards: CardInstance[];
+  pendingOpponentSpell?: string;
   onDamageOpponent: (amount: number) => void;
   onDamageCard: (card: CardInstance, amount: number) => void;
   onDestroyCard: (card: CardInstance) => void;
   onExileCard: (card: CardInstance) => void;
+  onCounterOpponentSpell?: () => void;
   onFinish: () => void;
   onCancel: () => void;
 };
 
-export function SpellResolver({ spell, opponentName, opponentLife, opponentCards, onDamageOpponent, onDamageCard, onDestroyCard, onExileCard, onFinish, onCancel }: SpellResolverProps) {
+export function SpellResolver({ spell, opponentName, opponentLife, opponentCards, pendingOpponentSpell, onDamageOpponent, onDamageCard, onDestroyCard, onExileCard, onCounterOpponentSpell, onFinish, onCancel }: SpellResolverProps) {
   const [amount, setAmount] = useState(1);
   const [applied, setApplied] = useState(0);
   if (!spell) return null;
+
+  const effects = parseSimpleOracleEffects(spell.oracleText);
+  const canCounterPendingSpell = effects.counterTargetSpell && Boolean(pendingOpponentSpell) && Boolean(onCounterOpponentSpell);
 
   const apply = (action: () => void) => {
     action();
@@ -28,7 +34,7 @@ export function SpellResolver({ spell, opponentName, opponentLife, opponentCards
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true">
       <section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-violet-400/35 bg-[#17181d] p-4 shadow-2xl sm:p-5">
         <div className="flex gap-4">
           {spell.imageUrl && <img src={spell.imageUrl} alt={spell.name} className="hidden w-40 self-start rounded-xl sm:block" />}
@@ -39,6 +45,15 @@ export function SpellResolver({ spell, opponentName, opponentLife, opponentCards
             {spell.oracleText && <p className="mt-3 whitespace-pre-line rounded-xl bg-black/20 p-3 text-sm leading-6 text-zinc-300">{spell.oracleText}</p>}
           </div>
         </div>
+
+        {canCounterPendingSpell && (
+          <div className="mt-4 rounded-2xl border border-sky-400/30 bg-sky-400/[.07] p-4">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-300">Legal counter target</div>
+            <div className="mt-1 text-lg font-black text-zinc-50">{pendingOpponentSpell}</div>
+            <p className="mt-1 text-xs leading-5 text-zinc-400">This spell says “counter target spell,” so it can counter the opponent's spell currently waiting to resolve.</p>
+            <button onClick={() => apply(() => onCounterOpponentSpell?.())} className="mt-3 w-full rounded-xl bg-sky-400 px-4 py-3 font-black text-zinc-950">COUNTER {pendingOpponentSpell?.toUpperCase()}</button>
+          </div>
+        )}
 
         <div className="mt-4 flex items-end gap-2">
           <label className="flex-1">
@@ -71,7 +86,7 @@ export function SpellResolver({ spell, opponentName, opponentLife, opponentCards
           </div>
         )}
 
-        <p className="mt-3 text-xs leading-5 text-zinc-500">Apply only the parts of the Oracle text that actually happen. The app tracks the result without pretending to resolve every Magic rule automatically.</p>
+        <p className="mt-3 text-xs leading-5 text-zinc-500">Use the automatic action when it matches the Oracle text; otherwise apply only the parts that actually happen.</p>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button onClick={onFinish} className="rounded-xl bg-emerald-400 px-3 py-3 font-black text-zinc-950">FINISH → GRAVEYARD</button>
           <button disabled={applied > 0} onClick={onCancel} className="rounded-xl bg-white/10 px-3 py-3 font-bold disabled:opacity-30">CANCEL CAST</button>
