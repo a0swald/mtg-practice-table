@@ -1,7 +1,7 @@
 'use client';
 
 import { Radio, UsersRound, Wifi, WifiOff } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { SharedRoom, SharedSession } from '@/lib/shared-table/useSharedUtilityTable';
 
 type RosterPlayer = SharedRoom['players'][number] & { connected: boolean; host: boolean; you: boolean };
@@ -9,14 +9,16 @@ type SetupMode = 'idle' | 'host' | 'join';
 
 const COLORS = ['#526bd8', '#d83c5b', '#3985ed', '#f4a20d', '#1ec367', '#a54ee9', '#0db0c8', '#df3c86', '#7acb14', '#fb7215', '#718299'];
 
-export function SharedTableSection({ session, roster, busy, error, onHost, onJoin, onLeave, onClearError }: {
+export function SharedTableSection({ session, roster, busy, error, previewColors, onHost, onJoin, onLeave, onPreview, onClearError }: {
   session: SharedSession | null;
   roster: RosterPlayer[];
   busy: boolean;
   error: string;
+  previewColors: string[];
   onHost: (name: string, color: string) => Promise<void>;
   onJoin: (code: string, name: string, color: string) => Promise<void>;
   onLeave: () => void;
+  onPreview: (code: string) => void;
   onClearError: () => void;
 }) {
   const [mode, setMode] = useState<SetupMode>('idle');
@@ -24,11 +26,22 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
 
+  useEffect(() => {
+    if (mode !== 'join') return;
+    if (code.length === 4) onPreview(code);
+    else onPreview('');
+  }, [code, mode, onPreview]);
+
+  useEffect(() => {
+    if (color && previewColors.includes(color.toLowerCase())) setColor('');
+  }, [previewColors, color]);
+
   function resetSetup() {
     setMode('idle');
     setCode('');
     setName('');
     setColor('');
+    onPreview('');
     onClearError();
   }
 
@@ -57,7 +70,8 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
     );
   }
 
-  const ready = name.trim().length > 0 && color.length > 0 && (mode !== 'join' || code.length === 4);
+  const colorTaken = color.length > 0 && previewColors.includes(color.toLowerCase());
+  const ready = name.trim().length > 0 && color.length > 0 && !colorTaken && (mode !== 'join' || code.length === 4);
 
   return (
     <div className="mt-5 border-t border-white/10 pt-4">
@@ -76,17 +90,23 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
           <input value={name} onChange={event => setName(event.target.value)} placeholder="Your name" autoComplete="off" style={{ fontSize: '16px' }} className="w-full rounded-xl bg-black/30 px-4 py-3 text-center font-bold outline-none" />
 
           <div>
-            <div className="mb-2 text-[9px] font-black uppercase tracking-[.16em] text-zinc-500">Choose player color</div>
+            <div className="mb-2 flex items-center justify-between gap-3 text-[9px] font-black uppercase tracking-[.16em] text-zinc-500"><span>Choose player color</span>{mode === 'join' && code.length === 4 && <span>{previewColors.length} taken</span>}</div>
             <div className="grid grid-cols-6 gap-2">
-              {COLORS.map(option => (
-                <button key={option} aria-label={`Choose ${option}`} onClick={() => setColor(option)} style={{ backgroundColor: option }} className={`h-9 rounded-xl border-2 transition-transform active:scale-95 ${color === option ? 'border-white shadow-[0_0_0_2px_rgba(255,255,255,.2)]' : 'border-white/10'}`} />
-              ))}
+              {COLORS.map(option => {
+                const taken = mode === 'join' && previewColors.includes(option.toLowerCase());
+                return (
+                  <button key={option} disabled={taken} aria-label={taken ? `${option} is already taken` : `Choose ${option}`} onClick={() => setColor(option)} style={{ backgroundColor: option }} className={`relative h-9 rounded-xl border-2 transition-transform ${taken ? 'cursor-not-allowed border-white/5 opacity-20 saturate-0' : 'active:scale-95'} ${color === option ? 'border-white shadow-[0_0_0_2px_rgba(255,255,255,.2)]' : 'border-white/10'}`}>
+                    {taken && <span className="absolute inset-0 grid place-items-center text-base font-black text-white/80">×</span>}
+                  </button>
+                );
+              })}
             </div>
-            <div className="mt-2 flex items-center gap-2 rounded-xl bg-black/20 p-2">
+            <div className={`mt-2 flex items-center gap-2 rounded-xl bg-black/20 p-2 ${colorTaken ? 'ring-1 ring-red-300/50' : ''}`}>
               <input aria-label="Custom player color" type="color" value={color || '#526bd8'} onChange={event => setColor(event.target.value)} className="h-9 w-14 overflow-hidden rounded-lg border border-white/10 bg-transparent p-0" />
               <div className="text-[10px] font-bold text-zinc-500">Custom color</div>
               {color && <div className="ml-auto font-mono text-[10px] uppercase text-zinc-400">{color}</div>}
             </div>
+            {colorTaken && <div className="mt-1 text-[10px] font-bold text-red-200">That color is already being used at this table.</div>}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
