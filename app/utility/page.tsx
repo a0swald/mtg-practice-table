@@ -15,19 +15,14 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from 'react';
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
 type CounterKey = 'poison' | 'energy' | 'experience' | 'storm' | 'commanderTax';
 type Facing = 'auto' | 0 | 90 | 180 | 270;
 type BackgroundMode = 'preset' | 'card' | 'custom';
 type CardLookup = { name: string; imageUrl?: string };
+
 type UtilityPlayer = {
   id: string;
   name: string;
@@ -44,6 +39,7 @@ type UtilityPlayer = {
   orientation?: Facing;
   commanderDamage: Record<string, number>;
 };
+
 type UtilityState = {
   players: UtilityPlayer[];
   startingLife: number;
@@ -101,9 +97,7 @@ function rotationFor(index: number, count: number) {
 }
 
 function logicalRotation(player: UtilityPlayer, index: number, count: number) {
-  return player.orientation === undefined || player.orientation === 'auto'
-    ? rotationFor(index, count)
-    : player.orientation;
+  return player.orientation === undefined || player.orientation === 'auto' ? rotationFor(index, count) : player.orientation;
 }
 
 function rotateDelta(dx: number, dy: number, rotation: number) {
@@ -211,6 +205,7 @@ export default function UtilityPage() {
           <button onClick={() => router.push('/')} className="mb-5 rounded-xl bg-white/5 px-3 py-2 text-sm font-bold text-zinc-300">← Main Menu</button>
           <div className="text-[11px] font-black uppercase tracking-[.24em] text-cyan-300">Table Utility</div>
           <h1 className="mt-1 text-3xl font-black">Start Table</h1>
+          <p className="mt-2 text-sm leading-6 text-zinc-400">Designed for an iPhone or iPad lying flat between players.</p>
           <div className="mt-6 space-y-4">
             <label className="flex items-center justify-between font-bold">
               Players
@@ -221,15 +216,10 @@ export default function UtilityPage() {
             <label className="flex items-center justify-between font-bold">
               Starting life
               <select value={setupLife} onChange={event => setSetupLife(Number(event.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2">
-                <option value={20}>20</option>
-                <option value={30}>30</option>
-                <option value={40}>40</option>
-                <option value={0}>Custom</option>
+                <option value={20}>20</option><option value={30}>30</option><option value={40}>40</option><option value={0}>Custom</option>
               </select>
             </label>
-            {setupLife === 0 && (
-              <input type="number" value={customLife} onChange={event => setCustomLife(Number(event.target.value) || 1)} className="w-full rounded-xl bg-black/25 px-3 py-3 text-base" />
-            )}
+            {setupLife === 0 && <input type="number" value={customLife} onChange={event => setCustomLife(Number(event.target.value) || 1)} className="w-full rounded-xl bg-black/25 px-3 py-3 text-base" />}
             <button onClick={() => setState(freshState(setupPlayers, setupLife === 0 ? customLife : setupLife))} className="w-full rounded-2xl bg-cyan-300 py-4 font-black text-zinc-950">START COUNTER</button>
           </div>
         </section>
@@ -268,19 +258,13 @@ export default function UtilityPage() {
 
       {menuOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setMenuOpen(false)}>
-          <section
-            onClick={event => event.stopPropagation()}
-            style={{ transform: `rotate(${singleRotation}deg)` }}
-            className="w-[min(82vw,440px)] rounded-[2rem] border border-white/10 bg-[#15181b] p-4 shadow-2xl transition-transform"
-          >
+          <section onClick={event => event.stopPropagation()} style={{ transform: `rotate(${singleRotation}deg)` }} className="w-[min(82vw,440px)] rounded-[2rem] border border-white/10 bg-[#15181b] p-4 shadow-2xl transition-transform">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Table Menu</div>
                 <div className="mt-1 text-xl font-black">Turn {state.turn} · {formatTime(state.seconds)}</div>
               </div>
-              <button aria-label="Close table menu" onClick={() => setMenuOpen(false)} className="grid h-12 w-12 place-items-center rounded-xl bg-white/5">
-                <X size={24} />
-              </button>
+              <button aria-label="Close table menu" onClick={() => setMenuOpen(false)} className="grid h-12 w-12 place-items-center rounded-xl bg-white/5"><X size={24} /></button>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <MenuAction icon={<Timer size={24} />} label={state.running ? 'PAUSE TIMER' : 'START TIMER'} onClick={() => setState(current => current ? { ...current, running: !current.running } : current)} />
@@ -312,11 +296,7 @@ function TableMenuButton({ rotation, single, onClick }: { rotation: number; sing
           : 'left-[calc(env(safe-area-inset-left)+1rem)] top-[calc(env(safe-area-inset-top)+1rem)]';
 
   return (
-    <button
-      aria-label="Open table menu"
-      onClick={onClick}
-      className={`absolute z-40 grid h-14 w-14 place-items-center rounded-2xl border border-white/20 bg-[#121416]/95 shadow-2xl backdrop-blur active:scale-95 ${position}`}
-    >
+    <button aria-label="Open table menu" onClick={onClick} className={`absolute z-40 grid h-14 w-14 place-items-center rounded-2xl border border-white/20 bg-[#121416]/95 shadow-2xl backdrop-blur active:scale-95 ${position}`}>
       <span style={{ transform: `rotate(${rotation}deg)` }}><Menu size={28} /></span>
     </button>
   );
@@ -324,31 +304,13 @@ function TableMenuButton({ rotation, single, onClick }: { rotation: number; sing
 
 function MenuAction({ icon, label, onClick, accent, danger, outlined }: { icon?: ReactNode; label: string; onClick: () => void; accent?: boolean; danger?: boolean; outlined?: boolean }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex min-h-14 items-center justify-center gap-2 rounded-2xl px-3 text-sm font-black ${accent ? 'bg-cyan-300 text-zinc-950' : danger ? 'border border-red-400/30 bg-red-400/[.05] text-red-200' : outlined ? 'border border-white/10 bg-transparent' : 'bg-white/10'}`}
-    >
+    <button onClick={onClick} className={`flex min-h-14 items-center justify-center gap-2 rounded-2xl px-3 text-sm font-black ${accent ? 'bg-cyan-300 text-zinc-950' : danger ? 'border border-red-400/30 bg-red-400/[.05] text-red-200' : outlined ? 'border border-white/10 bg-transparent' : 'bg-white/10'}`}>
       {icon}{label}
     </button>
   );
 }
 
-function PlayerZone({
-  player,
-  index,
-  count,
-  players,
-  defeated,
-  active,
-  monarch,
-  initiative,
-  onLife,
-  onPatch,
-  onCounter,
-  onCommanderDamage,
-  onMonarch,
-  onInitiative,
-}: {
+function PlayerZone({ player, index, count, players, defeated, active, monarch, initiative, onLife, onPatch, onCounter, onCommanderDamage, onMonarch, onInitiative }: {
   player: UtilityPlayer;
   index: number;
   count: number;
@@ -409,11 +371,7 @@ function PlayerZone({
       else if (effective > -64 || logical.y > 42) closeSettings();
     } else if (!open) {
       const rect = event.currentTarget.getBoundingClientRect();
-      const center = rotateDelta(
-        event.clientX - (rect.left + rect.width / 2),
-        event.clientY - (rect.top + rect.height / 2),
-        rotation,
-      );
+      const center = rotateDelta(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2), rotation);
       onLife(center.x < 0 ? -1 : 1);
     }
 
@@ -433,19 +391,7 @@ function PlayerZone({
     <article style={{ background: `linear-gradient(145deg,${player.color}55,#090b0d)` }} className={`relative overflow-hidden ${active ? 'ring-4 ring-inset ring-white/80' : ''} ${defeated ? 'brightness-50' : ''}`}>
       <div className="absolute inset-0">
         <div style={{ opacity: reveal, pointerEvents: reveal > .9 ? 'auto' : 'none' }} className="absolute inset-0 z-10 transition-opacity">
-          <PlayerSettings
-            key={settingsSession}
-            player={player}
-            players={players}
-            rotation={rotation}
-            monarch={monarch}
-            initiative={initiative}
-            onPatch={onPatch}
-            onCounter={onCounter}
-            onCommanderDamage={onCommanderDamage}
-            onMonarch={onMonarch}
-            onInitiative={onInitiative}
-          />
+          <PlayerSettings key={settingsSession} player={player} players={players} rotation={rotation} monarch={monarch} initiative={initiative} onPatch={onPatch} onCounter={onCounter} onCommanderDamage={onCommanderDamage} onMonarch={onMonarch} onInitiative={onInitiative} />
         </div>
 
         <div
@@ -453,12 +399,7 @@ function PlayerZone({
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
           onPointerCancel={() => { setGesture(undefined); setDrag(0); }}
-          style={{
-            transform: `translate(${tx}%,${ty}%)`,
-            backgroundImage: cardBackground,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
+          style={{ transform: `translate(${tx}%,${ty}%)`, backgroundImage: cardBackground, backgroundSize: 'cover', backgroundPosition: 'center' }}
           className="absolute inset-0 z-20 overflow-hidden shadow-2xl transition-transform duration-200 data-[drag=true]:transition-none"
           data-drag={gesture !== undefined}
         >
@@ -504,18 +445,7 @@ function DrawerHandle({ rotation, open, onClick }: { rotation: number; open: boo
   );
 }
 
-function PlayerSettings({
-  player,
-  players,
-  rotation,
-  monarch,
-  initiative,
-  onPatch,
-  onCounter,
-  onCommanderDamage,
-  onMonarch,
-  onInitiative,
-}: {
+function PlayerSettings({ player, players, rotation, monarch, initiative, onPatch, onCounter, onCommanderDamage, onMonarch, onInitiative }: {
   player: UtilityPlayer;
   players: UtilityPlayer[];
   rotation: number;
@@ -527,8 +457,6 @@ function PlayerSettings({
   onMonarch: () => void;
   onInitiative: () => void;
 }) {
-  const [page, setPage] = useState(0);
-  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number }>();
   const [panel, setPanel] = useState<'home' | 'background' | 'name'>('home');
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(player.backgroundImageUrl ? 'card' : 'preset');
   const [cardQuery, setCardQuery] = useState(player.backgroundCardName ?? '');
@@ -536,6 +464,7 @@ function PlayerSettings({
   const [cardStatus, setCardStatus] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestBusy, setSuggestBusy] = useState(false);
+  const facing: Facing = player.orientation ?? 'auto';
 
   useEffect(() => {
     const query = cardQuery.trim();
@@ -559,19 +488,6 @@ function PlayerSettings({
     return () => window.clearTimeout(timer);
   }, [cardQuery, panel, backgroundMode]);
 
-  function settingsPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (panel !== 'home' || (event.target as HTMLElement).closest('button,input,label')) return;
-    setSwipeStart({ x: event.clientX, y: event.clientY });
-  }
-
-  function settingsPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!swipeStart) return;
-    const logical = rotateDelta(event.clientX - swipeStart.x, event.clientY - swipeStart.y, rotation);
-    if (logical.x < -45) setPage(current => Math.min(2, current + 1));
-    else if (logical.x > 45) setPage(current => Math.max(0, current - 1));
-    setSwipeStart(undefined);
-  }
-
   async function useCardBackground(name?: string) {
     const query = (name ?? cardQuery).trim();
     if (!query) return;
@@ -593,13 +509,11 @@ function PlayerSettings({
     }
   }
 
-  const facing: Facing = player.orientation ?? 'auto';
-
   if (panel === 'background') {
     return (
       <SettingsShell rotation={rotation}>
         <BackButton onClick={() => setPanel('home')} />
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-md px-2">
           <h2 className="text-center text-sm font-black uppercase tracking-[.2em] text-zinc-300">Background</h2>
           <div className="mt-5 grid grid-cols-3 rounded-2xl bg-black/30 p-1">
             {(['preset', 'card', 'custom'] as BackgroundMode[]).map(mode => (
@@ -610,16 +524,22 @@ function PlayerSettings({
           </div>
 
           {backgroundMode === 'preset' && (
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-4">
               {COLORS.map(color => (
-                <button key={color} aria-label={`Use ${color}`} onClick={() => onPatch(current => ({ ...current, color, backgroundImageUrl: undefined, backgroundCardName: undefined }))} style={{ backgroundColor: color }} className={`h-12 w-12 rounded-full ${player.color === color && !player.backgroundImageUrl ? 'ring-4 ring-white' : ''}`} />
+                <button
+                  key={color}
+                  aria-label={`Use ${color}`}
+                  onClick={() => onPatch(current => ({ ...current, color, backgroundImageUrl: undefined, backgroundCardName: undefined }))}
+                  style={{ backgroundColor: color }}
+                  className={`h-12 w-full rounded-xl border-2 transition-transform active:scale-95 ${player.color === color && !player.backgroundImageUrl ? 'border-white shadow-[0_0_0_2px_rgba(255,255,255,.2)]' : 'border-white/10'}`}
+                />
               ))}
             </div>
           )}
 
           {backgroundMode === 'custom' && (
             <div className="mt-6 flex items-center justify-center gap-4">
-              <input type="color" value={player.color} onChange={event => onPatch(current => ({ ...current, color: event.target.value, backgroundImageUrl: undefined, backgroundCardName: undefined }))} className="h-20 w-24 bg-transparent" />
+              <input type="color" value={player.color} onChange={event => onPatch(current => ({ ...current, color: event.target.value, backgroundImageUrl: undefined, backgroundCardName: undefined }))} className="h-14 w-28 overflow-hidden rounded-xl border border-white/15 bg-transparent p-0" />
               <span className="font-mono text-sm uppercase text-zinc-400">{player.color}</span>
             </div>
           )}
@@ -645,17 +565,15 @@ function PlayerSettings({
                 <div className="absolute left-0 right-0 top-[3.4rem] z-50 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[#20202a] shadow-2xl [touch-action:pan-y]">
                   {suggestBusy && suggestions.length === 0
                     ? <div className="px-4 py-3 text-sm text-zinc-400">Searching…</div>
-                    : suggestions.map(name => (
-                      <button key={name} onPointerDown={event => event.preventDefault()} onClick={() => void useCardBackground(name)} className="block w-full border-b border-white/5 px-4 py-3 text-left text-base font-semibold last:border-0">{name}</button>
-                    ))}
+                    : suggestions.map(name => <button key={name} onPointerDown={event => event.preventDefault()} onClick={() => void useCardBackground(name)} className="block w-full border-b border-white/5 px-4 py-3 text-left text-base font-semibold last:border-0">{name}</button>)}
                 </div>
               )}
               {player.backgroundImageUrl && (
-                <div className="mt-4 flex items-center gap-3">
-                  <img src={player.backgroundImageUrl} alt="Selected card" className="h-24 w-16 rounded-lg object-cover" />
+                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/15 p-3">
+                  <img src={player.backgroundImageUrl} alt="Selected card" className="h-24 w-20 rounded-xl object-cover" />
                   <div className="min-w-0">
                     <div className="truncate font-black">{player.backgroundCardName}</div>
-                    <button onClick={() => onPatch(current => ({ ...current, backgroundImageUrl: undefined, backgroundCardName: undefined }))} className="mt-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-black">REMOVE</button>
+                    <button onClick={() => onPatch(current => ({ ...current, backgroundImageUrl: undefined, backgroundCardName: undefined }))} className="mt-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-black">REMOVE</button>
                   </div>
                 </div>
               )}
@@ -671,7 +589,7 @@ function PlayerSettings({
     return (
       <SettingsShell rotation={rotation}>
         <BackButton onClick={() => setPanel('home')} />
-        <div className="w-full max-w-sm text-center">
+        <div className="w-full max-w-sm px-2 text-center">
           <UserRound className="mx-auto" size={42} strokeWidth={1.6} />
           <div className="mt-3 text-xs font-black uppercase tracking-[.2em] text-zinc-400">Name</div>
           <input autoFocus value={player.name} onChange={event => onPatch(current => ({ ...current, name: event.target.value }))} style={{ fontSize: '16px' }} className="mt-4 w-full rounded-2xl bg-black/30 px-4 py-4 text-center font-black outline-none" />
@@ -688,67 +606,41 @@ function PlayerSettings({
 
   return (
     <div className="absolute inset-0 bg-[#373641] text-white">
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          style={{ transform: `rotate(${rotation}deg)` }}
-          className="relative flex aspect-square w-[min(82%,540px)] max-h-[82%] items-center justify-center transition-transform duration-200"
-          onPointerDown={settingsPointerDown}
-          onPointerUp={settingsPointerUp}
-          onPointerCancel={() => setSwipeStart(undefined)}
-        >
-          <div className="h-full w-full overflow-hidden">
-            <div style={{ transform: `translateX(-${page * 100}%)` }} className="flex h-full w-full transition-transform duration-200 ease-out">
-              <SettingsPage>
-                <Dashboard
-                  player={player}
-                  onBackground={() => setPanel('background')}
-                  onKill={() => onPatch(current => ({ ...current, life: 0 }))}
-                  onName={() => setPanel('name')}
-                  onTax={delta => onCounter('commanderTax', delta)}
-                  onPoison={delta => onCounter('poison', delta)}
-                />
-              </SettingsPage>
-              <SettingsPage>
-                <div className="w-full max-w-sm">
-                  <div className="text-center text-xs font-black uppercase tracking-[.18em] text-zinc-400">Counters</div>
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    <TinyCounter label="Poison" value={player.poison} onMinus={() => onCounter('poison', -1)} onPlus={() => onCounter('poison', 1)} />
-                    <TinyCounter label="Energy" value={player.energy} onMinus={() => onCounter('energy', -1)} onPlus={() => onCounter('energy', 1)} />
-                    <TinyCounter label="Experience" value={player.experience} onMinus={() => onCounter('experience', -1)} onPlus={() => onCounter('experience', 1)} />
-                    <TinyCounter label="Storm" value={player.storm} onMinus={() => onCounter('storm', -1)} onPlus={() => onCounter('storm', 1)} />
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button onClick={onMonarch} className={`rounded-xl py-3 text-xs font-black ${monarch ? 'bg-amber-300 text-zinc-950' : 'bg-white/10'}`}>MONARCH</button>
-                    <button onClick={onInitiative} className={`rounded-xl py-3 text-xs font-black ${initiative ? 'bg-violet-300 text-zinc-950' : 'bg-white/10'}`}>INITIATIVE</button>
-                  </div>
-                </div>
-              </SettingsPage>
-              <SettingsPage>
-                <div className="w-full max-w-sm">
-                  <div className="text-center text-xs font-black uppercase tracking-[.18em] text-zinc-400">Commander</div>
-                  {players.length > 1 ? (
-                    <div className="mt-4 space-y-2">
-                      {players.filter(source => source.id !== player.id).map(source => (
-                        <div key={source.id} className="grid grid-cols-[1fr_44px_52px_44px] items-center gap-2 rounded-xl bg-black/25 p-3">
-                          <span className="truncate text-xs font-bold">{source.name}</span>
-                          <button onClick={() => onCommanderDamage(source.id, -1)} className="h-11 rounded-xl bg-white/10 font-black">−</button>
-                          <span className="text-center text-lg font-black">{player.commanderDamage[source.id] ?? 0}</span>
-                          <button onClick={() => onCommanderDamage(source.id, 1)} className="h-11 rounded-xl bg-red-400/15 font-black text-red-200">+</button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-5 text-center text-sm text-zinc-400">Commander damage appears here in multiplayer.</div>
-                  )}
-                </div>
-              </SettingsPage>
+      <div className="absolute inset-0 overflow-y-auto overscroll-contain px-3 pb-8 pt-4 [touch-action:pan-y] sm:px-5">
+        <div style={{ transform: `rotate(${rotation}deg)` }} className="mx-auto flex min-h-full w-[96%] max-w-3xl flex-col gap-5 py-6 transition-transform duration-200">
+          <section className="rounded-3xl bg-black/10 p-4 sm:p-5">
+            <Dashboard player={player} onBackground={() => setPanel('background')} onKill={() => onPatch(current => ({ ...current, life: 0 }))} onName={() => setPanel('name')} onTax={delta => onCounter('commanderTax', delta)} onPoison={delta => onCounter('poison', delta)} />
+          </section>
+
+          <section className="rounded-3xl bg-black/10 p-4 sm:p-5">
+            <div className="text-xs font-black uppercase tracking-[.18em] text-zinc-400">Counters</div>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <TinyCounter label="Poison" value={player.poison} onMinus={() => onCounter('poison', -1)} onPlus={() => onCounter('poison', 1)} />
+              <TinyCounter label="Energy" value={player.energy} onMinus={() => onCounter('energy', -1)} onPlus={() => onCounter('energy', 1)} />
+              <TinyCounter label="Experience" value={player.experience} onMinus={() => onCounter('experience', -1)} onPlus={() => onCounter('experience', 1)} />
+              <TinyCounter label="Storm" value={player.storm} onMinus={() => onCounter('storm', -1)} onPlus={() => onCounter('storm', 1)} />
             </div>
-          </div>
-          <div className="absolute bottom-0 left-1/2 flex -translate-x-1/2 gap-3">
-            {[0, 1, 2].map(index => (
-              <button key={index} aria-label={`Settings page ${index + 1}`} onClick={() => setPage(index)} className={`h-2 rounded-full ${page === index ? 'w-7 bg-white' : 'w-2 bg-white/30'}`} />
-            ))}
-          </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button onClick={onMonarch} className={`rounded-2xl py-3 text-xs font-black ${monarch ? 'bg-amber-300 text-zinc-950' : 'bg-white/10'}`}><span className="inline-flex items-center gap-2"><Crown size={17} />MONARCH</span></button>
+              <button onClick={onInitiative} className={`rounded-2xl py-3 text-xs font-black ${initiative ? 'bg-violet-300 text-zinc-950' : 'bg-white/10'}`}><span className="inline-flex items-center gap-2"><Zap size={17} />INITIATIVE</span></button>
+            </div>
+          </section>
+
+          <section className="rounded-3xl bg-black/10 p-4 sm:p-5">
+            <div className="text-xs font-black uppercase tracking-[.18em] text-zinc-400">Commander Damage</div>
+            {players.length > 1 ? (
+              <div className="mt-4 space-y-2">
+                {players.filter(source => source.id !== player.id).map(source => (
+                  <div key={source.id} className="grid grid-cols-[1fr_44px_52px_44px] items-center gap-2 rounded-2xl bg-black/20 p-3">
+                    <span className="truncate text-xs font-bold">{source.name}</span>
+                    <button onClick={() => onCommanderDamage(source.id, -1)} className="h-11 rounded-xl bg-white/10 font-black">−</button>
+                    <span className="text-center text-lg font-black">{player.commanderDamage[source.id] ?? 0}</span>
+                    <button onClick={() => onCommanderDamage(source.id, 1)} className="h-11 rounded-xl bg-red-400/15 font-black text-red-200">+</button>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="mt-4 rounded-2xl bg-black/15 p-4 text-sm text-zinc-400">Commander damage appears here in multiplayer.</div>}
+          </section>
         </div>
       </div>
     </div>
@@ -765,15 +657,15 @@ function Dashboard({ player, onBackground, onKill, onName, onTax, onPoison }: {
 }) {
   return (
     <div className="flex w-full flex-col items-center justify-center gap-5">
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex w-full items-center justify-center gap-3 sm:gap-5">
         <MiniCounter value={player.commanderTax} onMinus={() => onTax(-2)} onPlus={() => onTax(2)} label="Tax" />
         <MiniCounter value={player.poison} onMinus={() => onPoison(-1)} onPlus={() => onPoison(1)} label="Poison" />
       </div>
-      <div className="h-px w-4/5 bg-white/10" />
-      <div className="flex items-start justify-center gap-5 sm:gap-8">
-        <Action icon={<ImageIcon size={44} strokeWidth={1.5} />} label="BACKGROUND" onClick={onBackground} />
-        <Action icon={<Skull size={44} strokeWidth={1.5} />} label="KILL PLAYER" onClick={onKill} danger />
-        <Action icon={<UserRound size={44} strokeWidth={1.5} />} label="NAME" onClick={onName} />
+      <div className="h-px w-full bg-white/10" />
+      <div className="flex w-full items-start justify-evenly gap-3">
+        <Action icon={<ImageIcon size={42} strokeWidth={1.5} />} label="BACKGROUND" onClick={onBackground} />
+        <Action icon={<Skull size={42} strokeWidth={1.5} />} label="KILL PLAYER" onClick={onKill} danger />
+        <Action icon={<UserRound size={42} strokeWidth={1.5} />} label="NAME" onClick={onName} />
       </div>
     </div>
   );
@@ -781,21 +673,20 @@ function Dashboard({ player, onBackground, onKill, onName, onTax, onPoison }: {
 
 function Action({ icon, label, onClick, danger }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean }) {
   return (
-    <button onClick={onClick} className={`flex min-w-[78px] flex-col items-center justify-center gap-2 text-center ${danger ? 'text-red-200' : 'text-white'}`}>
-      {icon}
-      <span className="text-[9px] font-black tracking-[.08em]">{label}</span>
+    <button onClick={onClick} className={`flex min-w-[78px] flex-1 flex-col items-center justify-center gap-2 text-center ${danger ? 'text-red-200' : 'text-white'}`}>
+      {icon}<span className="text-[9px] font-black tracking-[.08em]">{label}</span>
     </button>
   );
 }
 
 function MiniCounter({ value, onMinus, onPlus, label }: { value: number; onMinus: () => void; onPlus: () => void; label: string }) {
   return (
-    <div className="rounded-xl bg-black/15 px-2 py-2">
+    <div className="min-w-0 flex-1 rounded-2xl bg-black/15 px-2 py-2">
       <div className="mb-1 text-center text-[8px] font-black uppercase tracking-wider text-white/50">{label}</div>
-      <div className="grid grid-cols-[34px_42px_34px] items-center gap-1">
-        <button onClick={onMinus} className="h-9 rounded-lg bg-white/5 text-xl">−</button>
+      <div className="grid grid-cols-[34px_1fr_34px] items-center gap-1">
+        <button onClick={onMinus} className="h-9 rounded-xl bg-white/5 text-xl">−</button>
         <div className="text-center text-lg font-black">{value}</div>
-        <button onClick={onPlus} className="h-9 rounded-lg bg-white/5 text-xl">+</button>
+        <button onClick={onPlus} className="h-9 rounded-xl bg-white/5 text-xl">+</button>
       </div>
     </div>
   );
@@ -805,7 +696,7 @@ function SettingsShell({ rotation, children }: { rotation: number; children: Rea
   return (
     <div className="absolute inset-0 overflow-hidden bg-[#373641] text-white">
       <div className="absolute inset-0 flex items-center justify-center">
-        <div style={{ transform: `rotate(${rotation}deg)` }} className="relative flex aspect-square w-[min(82%,540px)] max-h-[82%] items-center justify-center overflow-visible p-5 transition-transform duration-200">
+        <div style={{ transform: `rotate(${rotation}deg)` }} className="relative flex aspect-square w-[min(90%,560px)] max-h-[90%] items-center justify-center overflow-visible p-5 transition-transform duration-200">
           {children}
         </div>
       </div>
@@ -815,24 +706,20 @@ function SettingsShell({ rotation, children }: { rotation: number; children: Rea
 
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="absolute bottom-2 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/65 px-6 py-3 text-sm font-black shadow-2xl backdrop-blur">
+    <button onClick={onClick} className="absolute bottom-2 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/70 px-6 py-3 text-sm font-black shadow-2xl backdrop-blur">
       <ChevronLeft size={19} /> BACK
     </button>
   );
 }
 
-function SettingsPage({ children }: { children: ReactNode }) {
-  return <div className="flex h-full w-full shrink-0 items-center justify-center px-3 py-8">{children}</div>;
-}
-
 function TinyCounter({ label, value, onMinus, onPlus }: { label: string; value: number; onMinus: () => void; onPlus: () => void }) {
   return (
-    <div className="rounded-xl bg-black/20 p-3">
+    <div className="rounded-2xl bg-black/20 p-3">
       <div className="text-center text-[8px] font-black uppercase tracking-wider text-zinc-500">{label}</div>
       <div className="mt-2 grid grid-cols-[36px_1fr_36px] items-center gap-1">
-        <button onClick={onMinus} className="h-9 rounded-lg bg-white/10 font-black">−</button>
+        <button onClick={onMinus} className="h-9 rounded-xl bg-white/10 font-black">−</button>
         <div className="text-center text-lg font-black">{value}</div>
-        <button onClick={onPlus} className="h-9 rounded-lg bg-white/10 font-black">+</button>
+        <button onClick={onPlus} className="h-9 rounded-xl bg-white/10 font-black">+</button>
       </div>
     </div>
   );
