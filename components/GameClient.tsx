@@ -51,12 +51,6 @@ export function GameClient() {
    <div className="min-w-0 space-y-3">
     <section className="rounded-2xl border border-white/10 bg-white/[.035] p-3"><PlayerHeader name={ai.name} life={ai.life} onLife={d=>dispatch({type:'LIFE',playerId:ai.id,delta:d})} meta={`${ai.handCount} hand · ${ai.graveyard.length} grave · ${ai.exile.length} exile`}/><Battlefield cards={ai.battlefield}/></section>
 
-    <div className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 transition sm:px-4 ${isPlayerTurn?'border-emerald-400/30 bg-emerald-400/[.06]':'border-amber-400/30 bg-amber-400/[.05]'}`}>
-      <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Turn</div><div className="text-lg font-black leading-none text-zinc-100">{game.turnNumber}</div></div>
-      <div className="flex items-center justify-center gap-2 text-center"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${isPlayerTurn?'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.65)]':'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,.55)]'}`}/><span className="text-sm font-black uppercase tracking-wide sm:text-base">{isPlayerTurn?'Your Turn':`${ai.name}'s Turn`}</span></div>
-      <div className="text-right"><div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Spells</div><div className="text-lg font-black leading-none text-zinc-100">{game.spellsCastThisTurn}</div></div>
-    </div>
-
     <section className="rounded-2xl border border-white/10 bg-white/[.05] p-3 shadow-2xl"><PlayerHeader name="My Battlefield" life={human.life} onLife={d=>dispatch({type:'LIFE',playerId:'player',delta:d})} meta={`${human.graveyard.length} grave · ${human.exile.length} exile`}/><Battlefield cards={human.battlefield} onCard={cardTap} selectedIds={attackers} combatMode={attackMode} combatUnavailableIds={combatUnavailableIds}/>
      {game.settings.tutorMode&&attackMode&&<p className="mb-3 rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">Select untapped creatures without summoning sickness. Creatures that cannot attack this turn are dimmed and unavailable.</p>}
      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Action onClick={()=>setSearchOpen(true)}>＋ PLAY CARD</Action><Action onClick={()=>setTokenOpen(true)}>＋ TOKEN</Action><Action onClick={()=>setManualOpen(true)}>＋ MANUAL</Action><Action onClick={()=>{if(!isPlayerTurn)return;setAttackMode(v=>!v);setAttackers([])}} disabled={!isPlayerTurn}>{attackMode?'CANCEL ATTACK':'⚔ COMBAT'}</Action></div>
@@ -67,7 +61,14 @@ export function GameClient() {
     <QuickReference active={isPlayerTurn}/>
    </div>
 
-   <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3"><GameLog entries={game.log}/></div></aside>
+   <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3">
+    <div className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 transition sm:px-4 ${isPlayerTurn?'border-emerald-400/30 bg-emerald-400/[.06]':'border-amber-400/30 bg-amber-400/[.05]'}`}>
+      <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Turn</div><div className="text-lg font-black leading-none text-zinc-100">{game.turnNumber}</div></div>
+      <div className="flex items-center justify-center gap-2 text-center"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${isPlayerTurn?'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.65)]':'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,.55)]'}`}/><span className="text-sm font-black uppercase tracking-wide">{isPlayerTurn?'Your Turn':`${ai.name}'s Turn`}</span></div>
+      <div className="text-right"><div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Spells</div><div className="text-lg font-black leading-none text-zinc-100">{game.spellsCastThisTurn}</div></div>
+    </div>
+    <GameLog entries={game.log}/>
+   </div></aside>
   </div>
 
   <SpellResolver spell={resolvingSpell} opponentName={ai.name} opponentLife={ai.life} opponentCards={ai.battlefield} onDamageOpponent={amount=>dispatch({type:'LIFE',playerId:ai.id,delta:-amount})} onDamageCard={damageOpponentCard} onDestroyCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'})} onExileCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'exile'})} onFinish={finishSpell} onCancel={()=>setResolvingSpell(undefined)}/>
