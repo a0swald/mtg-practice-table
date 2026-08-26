@@ -10,3 +10,19 @@ button, input, select { font: inherit; }
 .scrollbar-none::-webkit-scrollbar { display:none; }
 .scrollbar-none { scrollbar-width:none; }
 .card-ratio { aspect-ratio: 488 / 680; }
+
+/* Utility player dashboard: keep the primary actions intentionally minimal. */
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(3),
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(5) {
+  display: none;
+}
+
+/* Replace the kill action's generic X with a skull while preserving its label/action. */
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(2) > span:first-child {
+  font-size: 0;
+}
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(2) > span:first-child::after {
+  content: '☠';
+  font-size: 3rem;
+  line-height: 1;
+}
