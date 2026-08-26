@@ -40,6 +40,7 @@ export interface CardInstance {
   summoningSick?: boolean;
   combatDisabled?: boolean;
   combatDisabledBy?: string;
+  isCommander?: boolean;
   token?: boolean;
   tokenQuantity?: number;
   ownerId: string;
