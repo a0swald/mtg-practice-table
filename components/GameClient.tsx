@@ -114,11 +114,36 @@ function AIActionPanel({action,onResolve,onCounter}:{action:PendingAIAction;onRe
    : action.kind==='draw'
     ? `Draw ${action.amount ?? 2} cards`
     : `Mana artifact · +${action.amount ?? 1} mana`;
+
+ const explanation=action.kind==='creature'
+  ? `${action.cardName} is a generic AI creature. If it resolves, it enters the opponent's battlefield as a ${action.power ?? 0}/${action.toughness ?? 0}${action.flying?' creature with Flying':''}. It cannot attack this turn because it has summoning sickness.`
+  : action.kind==='removal'
+   ? `${action.cardName} is a generic AI removal spell. If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed and moved from your battlefield to your graveyard.`
+   : action.kind==='draw'
+    ? `${action.cardName} is a generic AI card-draw spell. If it resolves, the opponent draws ${action.amount ?? 2} cards, increasing the number of options in its hidden hand.`
+    : `${action.cardName} is a generic AI ramp artifact. If it resolves, it stays on the opponent's battlefield and gives the AI ${action.amount ?? 1} additional mana on future turns.`;
+
  return <section className="shrink-0 rounded-2xl border border-sky-400/35 bg-sky-400/[.08] p-4 shadow-lg shadow-sky-950/20">
-  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Opponent action — response required</div>
-  <div className="mt-1 text-xl font-black text-zinc-50">{action.cardName}</div>
-  <div className="mt-1 text-sm font-bold text-zinc-300">{detail}</div>
-  <p className="mt-2 text-xs leading-5 text-zinc-400">The opponent has cast this spell and paid its cost. Nothing resolves until you choose an option.</p>
+  <div className="flex items-start justify-between gap-3">
+   <div>
+    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Opponent action — response required</div>
+    <div className="mt-1 text-xl font-black text-zinc-50">{action.cardName}</div>
+    <div className="mt-1 text-sm font-bold text-zinc-300">{detail}</div>
+   </div>
+   <span className="shrink-0 rounded-full border border-sky-300/20 bg-sky-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-sky-200">Generic AI card</span>
+  </div>
+
+  <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+   <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">What this means</div>
+   <p className="mt-1 text-sm leading-5 text-zinc-200">{explanation}</p>
+  </div>
+
+  <div className="mt-3 grid gap-2 text-xs leading-5 text-zinc-400 sm:grid-cols-2">
+   <div className="rounded-lg bg-emerald-400/[.07] px-3 py-2"><span className="font-black text-emerald-300">Resolve:</span> let the spell happen as described above.</div>
+   <div className="rounded-lg bg-sky-400/[.07] px-3 py-2"><span className="font-black text-sky-300">Counter:</span> the spell does not resolve and its effect does not happen.</div>
+  </div>
+
+  <p className="mt-3 text-xs leading-5 text-zinc-500">The opponent has already cast the spell and paid its cost. The game is paused here so you can decide whether to respond.</p>
   <div className="mt-3 grid grid-cols-2 gap-2">
    <button onClick={onResolve} className="rounded-xl bg-emerald-400 px-3 py-3 font-black text-zinc-950">RESOLVE</button>
    <button onClick={onCounter} className="rounded-xl border border-sky-300/30 bg-white/10 px-3 py-3 font-black text-zinc-100">COUNTER</button>
