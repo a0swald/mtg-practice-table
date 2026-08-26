@@ -40,3 +40,23 @@ button, input, select { font: inherit; }
   border-radius: 0 !important;
   background: transparent !important;
 }
+
+/* When the settings surface faces left/right, size its pre-rotation box to the
+   player's actual viewport. This prevents the rotated scroller from being
+   clipped by the narrower, unrotated box. */
+.absolute.inset-0.overflow-hidden:has(> div[style*="rotate(90deg)"].absolute.inset-0),
+.absolute.inset-0.overflow-hidden:has(> div[style*="rotate(270deg)"].absolute.inset-0) {
+  container-type: size;
+}
+.absolute.inset-0.overflow-hidden > div[style*="rotate(90deg)"].absolute.inset-0 {
+  inset: 50% auto auto 50% !important;
+  width: 100cqh !important;
+  height: 100cqw !important;
+  transform: translate(-50%, -50%) rotate(90deg) !important;
+}
+.absolute.inset-0.overflow-hidden > div[style*="rotate(270deg)"].absolute.inset-0 {
+  inset: 50% auto auto 50% !important;
+  width: 100cqh !important;
+  height: 100cqw !important;
+  transform: translate(-50%, -50%) rotate(270deg) !important;
+}
