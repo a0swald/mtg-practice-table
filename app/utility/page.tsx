@@ -1,89 +1,847 @@
 'use client';
 
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  ChevronLeft,
+  Coins,
+  Crown,
+  Dices,
+  Image as ImageIcon,
+  LogOut,
+  Menu,
+  RotateCcw,
+  Skull,
+  Timer,
+  UserRound,
+  X,
+  Zap,
+} from 'lucide-react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { useRouter } from 'next/navigation';
 
-type CounterKey='poison'|'energy'|'experience'|'storm'|'commanderTax';
-type Facing='auto'|0|90|180|270;
-type BackgroundMode='preset'|'card'|'custom';
-type CardLookup={name:string;imageUrl?:string};
-type UtilityPlayer={id:string;name:string;color:string;backgroundImageUrl?:string;backgroundCardName?:string;life:number;poison:number;energy:number;experience:number;storm:number;commanderTax:number;sick:boolean;orientation?:Facing;commanderDamage:Record<string,number>};
-type UtilityState={players:UtilityPlayer[];startingLife:number;activePlayerId?:string;monarchId?:string;initiativeId?:string;seconds:number;running:boolean;turn:number;started:boolean};
+type CounterKey = 'poison' | 'energy' | 'experience' | 'storm' | 'commanderTax';
+type Facing = 'auto' | 0 | 90 | 180 | 270;
+type BackgroundMode = 'preset' | 'card' | 'custom';
+type CardLookup = { name: string; imageUrl?: string };
+type UtilityPlayer = {
+  id: string;
+  name: string;
+  color: string;
+  backgroundImageUrl?: string;
+  backgroundCardName?: string;
+  life: number;
+  poison: number;
+  energy: number;
+  experience: number;
+  storm: number;
+  commanderTax: number;
+  sick: boolean;
+  orientation?: Facing;
+  commanderDamage: Record<string, number>;
+};
+type UtilityState = {
+  players: UtilityPlayer[];
+  startingLife: number;
+  activePlayerId?: string;
+  monarchId?: string;
+  initiativeId?: string;
+  seconds: number;
+  running: boolean;
+  turn: number;
+  started: boolean;
+};
 
-const STORAGE_KEY='mtg-practice-utility-v3';
-const COLORS=['#526bd8','#d83c5b','#3985ed','#f4a20d','#1ec367','#a54ee9','#0db0c8','#df3c86','#7acb14','#fb7215','#718299'];
-const uid=()=>typeof crypto!=='undefined'&&'randomUUID' in crypto?crypto.randomUUID():`${Date.now()}-${Math.random()}`;
-function makePlayer(i:number,life:number):UtilityPlayer{return{id:uid(),name:`Player ${i+1}`,color:COLORS[i%COLORS.length],life,poison:0,energy:0,experience:0,storm:0,commanderTax:0,sick:false,orientation:'auto',commanderDamage:{}}}
-function freshState(count:number,life:number):UtilityState{return{players:Array.from({length:count},(_,i)=>makePlayer(i,life)),startingLife:life,seconds:0,running:false,turn:1,started:true}}
-function formatTime(total:number){return `${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`}
-function logicalRotation(player:UtilityPlayer,index:number,count:number){return player.orientation===undefined||player.orientation==='auto'?rotationFor(index,count):player.orientation}
+const STORAGE_KEY = 'mtg-practice-utility-v3';
+const COLORS = ['#526bd8', '#d83c5b', '#3985ed', '#f4a20d', '#1ec367', '#a54ee9', '#0db0c8', '#df3c86', '#7acb14', '#fb7215', '#718299'];
+const uid = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
-export default function UtilityPage(){
- const router=useRouter();
- const [setupPlayers,setSetupPlayers]=useState(4),[setupLife,setSetupLife]=useState(40),[customLife,setCustomLife]=useState(40);
- const [state,setState]=useState<UtilityState>();
- const [menuOpen,setMenuOpen]=useState(false),[diceResult,setDiceResult]=useState<string>();
- useEffect(()=>{try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)setState(JSON.parse(raw) as UtilityState)}catch{}},[]);
- useEffect(()=>{if(state)localStorage.setItem(STORAGE_KEY,JSON.stringify(state))},[state]);
- useEffect(()=>{if(!state?.running)return;const timer=window.setInterval(()=>setState(c=>c?{...c,seconds:c.seconds+1}:c),1000);return()=>window.clearInterval(timer)},[state?.running]);
- const defeated=useMemo(()=>new Set(state?.players.filter(p=>p.life<=0||p.poison>=10||Object.values(p.commanderDamage).some(v=>v>=21)).map(p=>p.id)??[]),[state]);
- function patchPlayer(id:string,fn:(p:UtilityPlayer)=>UtilityPlayer){setState(c=>c?{...c,players:c.players.map(p=>p.id===id?fn(p):p)}:c)}
- function life(id:string,d:number){patchPlayer(id,p=>({...p,life:p.life+d}))}
- function counter(id:string,k:CounterKey,d:number){patchPlayer(id,p=>({...p,[k]:Math.max(0,p[k]+d)}))}
- function commanderDamage(target:string,source:string,d:number){patchPlayer(target,p=>{const next=Math.max(0,(p.commanderDamage[source]??0)+d);return{...p,life:p.life-d,commanderDamage:{...p.commanderDamage,[source]:next}}})}
- function quit(){localStorage.removeItem(STORAGE_KEY);router.push('/')}
- function reset(){if(state)setState(freshState(state.players.length,state.startingLife));setMenuOpen(false)}
- function nextTurn(){setState(c=>{if(!c)return c;const alive=c.players.filter(p=>!defeated.has(p.id));if(!alive.length)return c;const i=Math.max(-1,alive.findIndex(p=>p.id===c.activePlayerId));const next=alive[(i+1)%alive.length];return{...c,activePlayerId:next.id,turn:c.turn+1,players:c.players.map(p=>({...p,storm:0}))}})}
- if(!state?.started)return <main className="flex min-h-[100dvh] items-center justify-center bg-[#090b0d] px-5 py-8 text-white"><section className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white/[.04] p-5"><button onClick={()=>router.push('/')} className="mb-5 rounded-xl bg-white/5 px-3 py-2 text-sm font-bold text-zinc-300">← Main Menu</button><div className="text-[11px] font-black uppercase tracking-[.24em] text-cyan-300">Table Utility</div><h1 className="mt-1 text-3xl font-black">Start Table</h1><div className="mt-6 space-y-4"><label className="flex items-center justify-between font-bold">Players<select value={setupPlayers} onChange={e=>setSetupPlayers(Number(e.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2">{Array.from({length:10},(_,i)=>i+1).map(v=><option key={v}>{v}</option>)}</select></label><label className="flex items-center justify-between font-bold">Starting life<select value={setupLife} onChange={e=>setSetupLife(Number(e.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2"><option value={20}>20</option><option value={30}>30</option><option value={40}>40</option><option value={0}>Custom</option></select></label>{setupLife===0&&<input type="number" value={customLife} onChange={e=>setCustomLife(Number(e.target.value)||1)} className="w-full rounded-xl bg-black/25 px-3 py-3 text-base"/>}<button onClick={()=>setState(freshState(setupPlayers,setupLife===0?customLife:setupLife))} className="w-full rounded-2xl bg-cyan-300 py-4 font-black text-zinc-950">START COUNTER</button></div></section></main>;
- const count=state.players.length;
- const menuClass=count===1?'absolute right-[calc(env(safe-area-inset-right)+1rem)] top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-[#121416]/90 text-xl font-black shadow-2xl':'absolute left-1/2 top-1/2 z-40 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl border border-white/20 bg-[#121416]/95 text-xl font-black shadow-2xl';
- return <main className="relative h-[100dvh] w-screen overflow-hidden bg-black text-white [touch-action:none] [user-select:none]"><section className={layoutClass(count)}>{state.players.map((player,index)=><PlayerZone key={player.id} player={player} index={index} count={count} players={state.players} defeated={defeated.has(player.id)} active={state.activePlayerId===player.id} monarch={state.monarchId===player.id} initiative={state.initiativeId===player.id} onLife={d=>life(player.id,d)} onPatch={fn=>patchPlayer(player.id,fn)} onCounter={(k,d)=>counter(player.id,k,d)} onCommanderDamage={(s,d)=>commanderDamage(player.id,s,d)} onMonarch={()=>setState(c=>c?{...c,monarchId:c.monarchId===player.id?undefined:player.id}:c)} onInitiative={()=>setState(c=>c?{...c,initiativeId:c.initiativeId===player.id?undefined:player.id}:c)}/>)}</section><button aria-label="Open table menu" onClick={()=>setMenuOpen(true)} className={menuClass}>☰</button>{menuOpen&&<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={()=>setMenuOpen(false)}><section onClick={e=>e.stopPropagation()} className="w-full max-w-md rounded-[2rem] bg-[#15181b] p-4"><div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Table Menu</div><div className="mt-1 text-xl font-black">Turn {state.turn} · {formatTime(state.seconds)}</div></div><button onClick={()=>setMenuOpen(false)} className="rounded-xl bg-white/5 px-3 py-2 font-black">✕</button></div><div className="mt-4 grid grid-cols-2 gap-2"><button onClick={()=>setState(c=>c?{...c,running:!c.running}:c)} className="rounded-2xl bg-white/10 py-4 font-black">{state.running?'PAUSE TIMER':'START TIMER'}</button><button onClick={nextTurn} className="rounded-2xl bg-cyan-300 py-4 font-black text-zinc-950">NEXT TURN</button><button onClick={()=>setDiceResult(`D20: ${1+Math.floor(Math.random()*20)}`)} className="rounded-2xl bg-white/10 py-4 font-black">ROLL D20</button><button onClick={()=>setDiceResult(Math.random()<.5?'HEADS':'TAILS')} className="rounded-2xl bg-white/10 py-4 font-black">FLIP COIN</button></div>{diceResult&&<div className="mt-3 rounded-2xl bg-black/25 p-4 text-center text-3xl font-black">{diceResult}</div>}<div className="mt-4 grid grid-cols-2 gap-2"><button onClick={reset} className="rounded-2xl border border-white/10 py-3 text-sm font-black">RESET</button><button onClick={quit} className="rounded-2xl border border-red-400/20 bg-red-400/5 py-3 text-sm font-black text-red-200">QUIT</button></div></section></div>}</main>
+function makePlayer(index: number, life: number): UtilityPlayer {
+  return {
+    id: uid(),
+    name: `Player ${index + 1}`,
+    color: COLORS[index % COLORS.length],
+    life,
+    poison: 0,
+    energy: 0,
+    experience: 0,
+    storm: 0,
+    commanderTax: 0,
+    sick: false,
+    orientation: 'auto',
+    commanderDamage: {},
+  };
 }
 
-function PlayerZone({player,index,count,players,defeated,active,monarch,initiative,onLife,onPatch,onCounter,onCommanderDamage,onMonarch,onInitiative}:{player:UtilityPlayer;index:number;count:number;players:UtilityPlayer[];defeated:boolean;active:boolean;monarch:boolean;initiative:boolean;onLife:(d:number)=>void;onPatch:(fn:(p:UtilityPlayer)=>UtilityPlayer)=>void;onCounter:(k:CounterKey,d:number)=>void;onCommanderDamage:(s:string,d:number)=>void;onMonarch:()=>void;onInitiative:()=>void}){
- const rotation=logicalRotation(player,index,count),rad=rotation*Math.PI/180;
- const [open,setOpen]=useState(false),[drag,setDrag]=useState(0),[gesture,setGesture]=useState<{x:number;y:number}>(),[settingsSession,setSettingsSession]=useState(0);
- const drawer=88,offset=open?-drawer:0;
- function closeSettings(){setOpen(false);setSettingsSession(value=>value+1)}
- function toggleSettings(){if(open)closeSettings();else setOpen(true)}
- function pointerDown(e:ReactPointerEvent<HTMLDivElement>){if((e.target as HTMLElement).closest('[data-drawer-handle]'))return;setGesture({x:e.clientX,y:e.clientY});e.currentTarget.setPointerCapture(e.pointerId)}
- function logicalDelta(dx:number,dy:number){return{x:dx*Math.cos(rad)+dy*Math.sin(rad),y:-dx*Math.sin(rad)+dy*Math.cos(rad)}}
- function pointerMove(e:ReactPointerEvent<HTMLDivElement>){if(!gesture)return;const l=logicalDelta(e.clientX-gesture.x,e.clientY-gesture.y),size=(rotation===90||rotation===270)?e.currentTarget.clientWidth:e.currentTarget.clientHeight;setDrag(Math.max(-drawer,Math.min(drawer,l.y/Math.max(1,size)*100)))}
- function pointerUp(e:ReactPointerEvent<HTMLDivElement>){if(!gesture)return;const dx=e.clientX-gesture.x,dy=e.clientY-gesture.y,l=logicalDelta(dx,dy),moved=Math.hypot(dx,dy)>12;if(moved){const effective=offset+drag;if(effective<-24||l.y<-42)setOpen(true);else if(effective>-64||l.y>42)closeSettings()}else if(!open){const r=e.currentTarget.getBoundingClientRect(),center=logicalDelta(e.clientX-(r.left+r.width/2),e.clientY-(r.top+r.height/2));onLife(center.x<0?-1:1)}setGesture(undefined);setDrag(0)}
- const translate=Math.max(-drawer,Math.min(0,offset+drag)),reveal=Math.max(0,Math.min(1,-translate/drawer));
- const tx=-translate*Math.sin(rad),ty=translate*Math.cos(rad);
- const cardBackground=player.backgroundImageUrl?`linear-gradient(rgba(0,0,0,.26),rgba(0,0,0,.48)),url("${player.backgroundImageUrl}")`:`linear-gradient(145deg,${player.color}f2,${player.color}b8)`;
- return <article style={{background:`linear-gradient(145deg,${player.color}55,#090b0d)`}} className={`relative overflow-hidden ${active?'ring-4 ring-inset ring-white/80':''} ${defeated?'brightness-50':''}`}><div className="absolute inset-0"><div style={{opacity:reveal,pointerEvents:reveal>.9?'auto':'none'}} className="absolute inset-0 z-10 transition-opacity"><PlayerSettings key={settingsSession} player={player} players={players} rotation={rotation} monarch={monarch} initiative={initiative} onPatch={onPatch} onCounter={onCounter} onCommanderDamage={onCommanderDamage} onMonarch={onMonarch} onInitiative={onInitiative}/></div><div onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={()=>{setGesture(undefined);setDrag(0)}} style={{transform:`translate(${tx}%,${ty}%)`,backgroundImage:cardBackground,backgroundSize:'cover',backgroundPosition:'center'}} className="absolute inset-0 z-20 overflow-hidden shadow-2xl transition-transform duration-200 data-[drag=true]:transition-none" data-drag={gesture!==undefined}><div style={{transform:`rotate(${rotation}deg)`}} className="pointer-events-none absolute inset-0"><div className="absolute inset-0 flex items-center justify-center"><div className="text-center"><div className="mb-1 text-[10px] font-black uppercase tracking-[.14em] text-white/80">{monarch&&'♛ '}{initiative&&'◆ '}{player.sick&&'● '}{player.name}</div><div className="text-[clamp(4.5rem,18vw,10rem)] font-black leading-none tabular-nums tracking-[-.06em] [text-shadow:0_3px_18px_rgba(0,0,0,.65)]">{player.life}</div><div className="mt-1 flex justify-center gap-3 text-xs font-black text-white/80"><span>−</span><span>tap sides</span><span>+</span></div>{(player.poison>0||player.commanderTax>0)&&<div className="mt-2 flex justify-center gap-1 text-[10px] font-black">{player.poison>0&&<span className="rounded-full bg-black/40 px-2 py-1">☠ {player.poison}</span>}{player.commanderTax>0&&<span className="rounded-full bg-black/40 px-2 py-1">Tax +{player.commanderTax}</span>}</div>}{defeated&&<div className="mt-2 rounded-full bg-black/50 px-3 py-1 text-xs font-black uppercase">Defeated</div>}</div></div></div><DrawerHandle rotation={rotation} open={open} onClick={toggleSettings}/></div></div></article>
+function freshState(count: number, life: number): UtilityState {
+  return {
+    players: Array.from({ length: count }, (_, index) => makePlayer(index, life)),
+    startingLife: life,
+    seconds: 0,
+    running: false,
+    turn: 1,
+    started: true,
+  };
 }
 
-function DrawerHandle({rotation,open,onClick}:{rotation:number;open:boolean;onClick:()=>void}){
- const cls=rotation===0?'bottom-0 left-1/2 -translate-x-1/2 items-end pb-3':rotation===180?'top-0 left-1/2 -translate-x-1/2 items-start pt-3':rotation===90?'left-0 top-1/2 -translate-y-1/2 items-center justify-start pl-3':'right-0 top-1/2 -translate-y-1/2 items-center justify-end pr-3';
- const bar=rotation===90||rotation===270?'h-10 w-1':'h-1 w-10';
- return <button data-drawer-handle aria-label={open?'Close player settings':'Open player settings'} onClick={e=>{e.stopPropagation();onClick()}} className={`absolute z-30 flex h-20 w-20 justify-center ${cls}`}><span className={`${bar} rounded-full bg-white/85`}/></button>
+function formatTime(total: number) {
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-function PlayerSettings({player,players,rotation,monarch,initiative,onPatch,onCounter,onCommanderDamage,onMonarch,onInitiative}:{player:UtilityPlayer;players:UtilityPlayer[];rotation:number;monarch:boolean;initiative:boolean;onPatch:(fn:(p:UtilityPlayer)=>UtilityPlayer)=>void;onCounter:(k:CounterKey,d:number)=>void;onCommanderDamage:(s:string,d:number)=>void;onMonarch:()=>void;onInitiative:()=>void}){
- const [page,setPage]=useState(0),[startX,setStartX]=useState<number>(),[panel,setPanel]=useState<'home'|'background'|'name'|'partners'|'profile'>('home'),[backgroundMode,setBackgroundMode]=useState<BackgroundMode>(player.backgroundImageUrl?'card':'preset'),[cardQuery,setCardQuery]=useState(player.backgroundCardName??''),[cardBusy,setCardBusy]=useState(false),[cardStatus,setCardStatus]=useState(''),[suggestions,setSuggestions]=useState<string[]>([]),[suggestBusy,setSuggestBusy]=useState(false);
- useEffect(()=>{const q=cardQuery.trim();if(panel!=='background'||backgroundMode!=='card'||q.length<2){setSuggestions([]);return}const timer=window.setTimeout(async()=>{setSuggestBusy(true);try{const res=await fetch(`/api/cards/autocomplete?q=${encodeURIComponent(q)}`);if(!res.ok)throw new Error();const data=await res.json() as string[]|{data?:string[];suggestions?:string[]};setSuggestions(Array.isArray(data)?data:(data.data??data.suggestions??[]).slice(0,8))}catch{setSuggestions([])}finally{setSuggestBusy(false)}},220);return()=>window.clearTimeout(timer)},[cardQuery,panel,backgroundMode]);
- function swipeStart(e:ReactPointerEvent<HTMLDivElement>){if(panel!=='home'||(e.target as HTMLElement).closest('button,input,label'))return;setStartX(e.clientX)}
- function swipeEnd(e:ReactPointerEvent<HTMLDivElement>){if(startX===undefined)return;const d=e.clientX-startX;if(d<-45)setPage(p=>Math.min(2,p+1));else if(d>45)setPage(p=>Math.max(0,p-1));setStartX(undefined)}
- async function useCardBackground(name?:string){const q=(name??cardQuery).trim();if(!q)return;setCardBusy(true);setCardStatus('');try{const res=await fetch(`/api/cards/named?name=${encodeURIComponent(q)}`);if(!res.ok)throw new Error('Card not found.');const card=await res.json() as CardLookup;if(!card.imageUrl)throw new Error('No image available.');onPatch(p=>({...p,backgroundImageUrl:card.imageUrl,backgroundCardName:card.name}));setCardQuery(card.name);setSuggestions([]);setCardStatus(`Using ${card.name}`)}catch(error){setCardStatus(error instanceof Error?error.message:'Could not load card.')}finally{setCardBusy(false)}}
- const facing:Facing=player.orientation??'auto';
- if(panel==='background')return <SettingsShell rotation={rotation}><BackButton onClick={()=>setPanel('home')}/><div className="mx-auto w-full max-w-lg"><h2 className="text-center text-sm font-black uppercase tracking-[.2em] text-zinc-300">Background</h2><div className="mt-5 grid grid-cols-3 rounded-2xl bg-black/30 p-1">{(['preset','card','custom'] as BackgroundMode[]).map(mode=><button key={mode} onClick={()=>setBackgroundMode(mode)} className={`rounded-xl py-3 text-xs font-black uppercase ${backgroundMode===mode?'bg-white text-zinc-950':'text-zinc-400'}`}>{mode==='preset'?'Colors':mode==='card'?'MTG Card':'Custom'}</button>)}</div>{backgroundMode==='preset'&&<div className="mt-6 flex flex-wrap justify-center gap-3">{COLORS.map(c=><button key={c} onClick={()=>onPatch(p=>({...p,color:c,backgroundImageUrl:undefined,backgroundCardName:undefined}))} style={{backgroundColor:c}} className={`h-14 w-14 rounded-full ${player.color===c&&!player.backgroundImageUrl?'ring-4 ring-white':''}`}/>)}</div>}{backgroundMode==='custom'&&<div className="mt-6 flex items-center justify-center gap-4"><input type="color" value={player.color} onChange={e=>onPatch(p=>({...p,color:e.target.value,backgroundImageUrl:undefined,backgroundCardName:undefined}))} className="h-20 w-24 bg-transparent"/><span className="font-mono text-sm uppercase text-zinc-400">{player.color}</span></div>}{backgroundMode==='card'&&<div className="relative mt-6"><div className="flex gap-2"><input value={cardQuery} onChange={e=>setCardQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!cardBusy)void useCardBackground()}} placeholder="Search MTG card…" autoComplete="off" autoCorrect="off" spellCheck={false} style={{fontSize:'16px'}} className="min-w-0 flex-1 rounded-xl bg-black/30 px-4 py-3 outline-none"/><button onClick={()=>void useCardBackground()} disabled={cardBusy} className="rounded-xl bg-blue-500 px-5 text-xs font-black">{cardBusy?'…':'USE'}</button></div>{(suggestions.length>0||suggestBusy)&&<div className="absolute left-0 right-0 top-[3.4rem] z-50 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[#20202a] shadow-2xl">{suggestBusy&&suggestions.length===0?<div className="px-4 py-3 text-sm text-zinc-400">Searching…</div>:suggestions.map(name=><button key={name} onPointerDown={e=>e.preventDefault()} onClick={()=>void useCardBackground(name)} className="block w-full border-b border-white/5 px-4 py-3 text-left text-base font-semibold last:border-0">{name}</button>)}</div>}{player.backgroundImageUrl&&<div className="mt-4 flex items-center gap-3"><img src={player.backgroundImageUrl} alt="Selected card" className="h-24 w-16 rounded-lg object-cover"/><div><div className="font-black">{player.backgroundCardName}</div><button onClick={()=>onPatch(p=>({...p,backgroundImageUrl:undefined,backgroundCardName:undefined}))} className="mt-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-black">REMOVE</button></div></div>}{cardStatus&&<div className="mt-3 text-xs text-zinc-400">{cardStatus}</div>}</div>}</div></SettingsShell>;
- if(panel==='name')return <SettingsShell rotation={rotation}><BackButton onClick={()=>setPanel('home')}/><div className="mx-auto w-full max-w-sm text-center"><div className="mb-3 text-5xl">▣</div><div className="text-xs font-black uppercase tracking-[.2em] text-zinc-400">Name</div><input autoFocus value={player.name} onChange={e=>onPatch(p=>({...p,name:e.target.value}))} style={{fontSize:'16px'}} className="mt-4 w-full rounded-2xl bg-black/30 px-4 py-4 text-center font-black outline-none"/><div className="mt-5 text-xs font-black uppercase tracking-[.2em] text-zinc-500">Facing</div><div className="mt-3 grid grid-cols-5 gap-2">{([['auto','A'],[0,'↑'],[90,'→'],[180,'↓'],[270,'←']] as [Facing,string][]).map(([v,l])=><button key={String(v)} onClick={()=>onPatch(p=>({...p,orientation:v}))} className={`h-12 rounded-xl font-black ${facing===v?'bg-blue-500':'bg-white/10'}`}>{l}</button>)}</div></div></SettingsShell>;
- if(panel==='partners')return <SettingsShell rotation={rotation}><BackButton onClick={()=>setPanel('home')}/><div className="text-center"><div className="text-6xl">◒</div><div className="mt-4 text-lg font-black">Partners</div></div></SettingsShell>;
- if(panel==='profile')return <SettingsShell rotation={rotation}><BackButton onClick={()=>setPanel('home')}/><div className="text-center"><div className="text-6xl">➜</div><div className="mt-4 text-lg font-black">Load Profile</div></div></SettingsShell>;
- return <div className="absolute inset-0 bg-[#373641] text-white"><div style={{transform:`rotate(${rotation}deg)`}} className="absolute inset-0 flex items-center justify-center"><div className="flex h-full w-full max-w-5xl items-center justify-center overflow-hidden" onPointerDown={swipeStart} onPointerUp={swipeEnd}><div style={{transform:`translateX(-${page*100}%)`}} className="flex h-full w-full shrink-0 transition-transform duration-200"><SettingsPage><Dashboard player={player} onBackground={()=>setPanel('background')} onKill={()=>onPatch(p=>({...p,life:0}))} onPartners={()=>setPanel('partners')} onName={()=>setPanel('name')} onProfile={()=>setPanel('profile')} onTax={d=>onCounter('commanderTax',d)} onPoison={d=>onCounter('poison',d)}/></SettingsPage><SettingsPage><div className="w-full max-w-md"><div className="text-center text-xs font-black uppercase tracking-[.18em] text-zinc-400">Counters</div><div className="mt-5 grid grid-cols-2 gap-3"><TinyCounter label="Poison" value={player.poison} onMinus={()=>onCounter('poison',-1)} onPlus={()=>onCounter('poison',1)}/><TinyCounter label="Energy" value={player.energy} onMinus={()=>onCounter('energy',-1)} onPlus={()=>onCounter('energy',1)}/><TinyCounter label="Experience" value={player.experience} onMinus={()=>onCounter('experience',-1)} onPlus={()=>onCounter('experience',1)}/><TinyCounter label="Storm" value={player.storm} onMinus={()=>onCounter('storm',-1)} onPlus={()=>onCounter('storm',1)}/></div><div className="mt-4 grid grid-cols-2 gap-2"><button onClick={onMonarch} className={`rounded-xl py-3 text-xs font-black ${monarch?'bg-amber-300 text-zinc-950':'bg-white/10'}`}>♛ MONARCH</button><button onClick={onInitiative} className={`rounded-xl py-3 text-xs font-black ${initiative?'bg-violet-300 text-zinc-950':'bg-white/10'}`}>◆ INITIATIVE</button></div></div></SettingsPage><SettingsPage><div className="w-full max-w-md"><div className="text-center text-xs font-black uppercase tracking-[.18em] text-zinc-400">Commander</div>{players.length>1?<div className="mt-4 space-y-2">{players.filter(s=>s.id!==player.id).map(s=><div key={s.id} className="grid grid-cols-[1fr_44px_52px_44px] items-center gap-2 rounded-xl bg-black/25 p-3"><span className="truncate text-xs font-bold">{s.name}</span><button onClick={()=>onCommanderDamage(s.id,-1)} className="h-11 rounded-xl bg-white/10 font-black">−</button><span className="text-center text-lg font-black">{player.commanderDamage[s.id]??0}</span><button onClick={()=>onCommanderDamage(s.id,1)} className="h-11 rounded-xl bg-red-400/15 font-black text-red-200">+</button></div>)}</div>:<div className="mt-5 text-center text-sm text-zinc-400">Commander damage appears here in multiplayer.</div>}</div></SettingsPage></div></div></div><div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-3">{[0,1,2].map(i=><button key={i} onClick={()=>setPage(i)} className={`h-2 rounded-full ${page===i?'w-7 bg-white':'w-2 bg-white/30'}`}/>)}</div></div>
+function rotationFor(index: number, count: number) {
+  if (count === 1) return 0;
+  if (count === 2) return index === 0 ? 180 : 0;
+  if (count === 3) return index === 0 ? 180 : index === 1 ? 90 : 270;
+  if (count === 4) return index < 2 ? 180 : 0;
+  return index % 2 === 0 ? 90 : 270;
 }
 
-function Dashboard({player,onBackground,onKill,onPartners,onName,onProfile,onTax,onPoison}:{player:UtilityPlayer;onBackground:()=>void;onKill:()=>void;onPartners:()=>void;onName:()=>void;onProfile:()=>void;onTax:(d:number)=>void;onPoison:(d:number)=>void}){
- return <div className="flex w-full max-w-4xl items-center justify-center gap-4 px-4"><div className="flex flex-col gap-4"><MiniCounter value={player.commanderTax} onMinus={()=>onTax(-2)} onPlus={()=>onTax(2)} icon="♙"/><MiniCounter value={player.poison} onMinus={()=>onPoison(-1)} onPlus={()=>onPoison(1)} icon="♨"/></div><div className="h-28 w-px bg-white/10"/><Action icon="▧" label="BACKGROUND" onClick={onBackground}/><Action icon="✕" label="KILL PLAYER" onClick={onKill}/><Action icon="◒" label="PARTNERS" onClick={onPartners}/><Action icon="▣" label="NAME" onClick={onName}/><div className="h-28 w-px bg-white/10"/><Action icon="➜" label="LOAD PROFILE" onClick={onProfile}/></div>
+function logicalRotation(player: UtilityPlayer, index: number, count: number) {
+  return player.orientation === undefined || player.orientation === 'auto'
+    ? rotationFor(index, count)
+    : player.orientation;
 }
-function Action({icon,label,onClick}:{icon:string;label:string;onClick:()=>void}){return <button onClick={onClick} className="flex min-w-[76px] flex-col items-center justify-center gap-2 text-center"><span className="text-5xl font-light leading-none text-white">{icon}</span><span className="text-[9px] font-black tracking-[.08em] text-white/90">{label}</span></button>}
-function MiniCounter({value,onMinus,onPlus,icon}:{value:number;onMinus:()=>void;onPlus:()=>void;icon:string}){return <div className="grid grid-cols-[34px_40px_34px] items-center gap-1"><button onClick={onMinus} className="h-8 rounded bg-white/5 text-xl">−</button><div className="text-center"><div className="text-xl leading-none">{icon}</div><div className="mt-1 text-lg font-black">{value}</div></div><button onClick={onPlus} className="h-8 rounded bg-white/5 text-xl">+</button></div>}
-function SettingsShell({rotation,children}:{rotation:number;children:React.ReactNode}){return <div className="absolute inset-0 overflow-hidden bg-[#373641] text-white"><div style={{transform:`rotate(${rotation}deg)`}} className="absolute inset-0 flex items-center justify-center"><div className="relative flex h-[88%] w-[88%] items-center justify-center overflow-y-auto p-5 pb-20 [touch-action:pan-y]">{children}</div></div></div>}
-function BackButton({onClick}:{onClick:()=>void}){return <button onClick={onClick} className="absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/15 bg-black/45 px-6 py-3 text-sm font-black shadow-xl backdrop-blur">← BACK</button>}
-function SettingsPage({children}:{children:React.ReactNode}){return <div className="flex h-full w-full shrink-0 items-center justify-center px-5 py-5">{children}</div>}
-function TinyCounter({label,value,onMinus,onPlus}:{label:string;value:number;onMinus:()=>void;onPlus:()=>void}){return <div className="rounded-xl bg-black/20 p-3"><div className="text-center text-[8px] font-black uppercase tracking-wider text-zinc-500">{label}</div><div className="mt-2 grid grid-cols-[36px_1fr_36px] items-center gap-1"><button onClick={onMinus} className="h-9 rounded-lg bg-white/10 font-black">−</button><div className="text-center text-lg font-black">{value}</div><button onClick={onPlus} className="h-9 rounded-lg bg-white/10 font-black">+</button></div></div>}
-function layoutClass(count:number){if(count===1)return'grid h-full w-full grid-cols-1 grid-rows-1 bg-black';if(count===2)return'grid h-full w-full grid-rows-2 gap-[2px] bg-black';if(count===3)return'grid h-full w-full grid-cols-2 grid-rows-2 gap-[2px] bg-black [&>*:first-child]:col-span-2';if(count===4)return'grid h-full w-full grid-cols-2 grid-rows-2 gap-[2px] bg-black';return`grid h-full w-full gap-[2px] bg-black ${count<=6?'grid-cols-2 grid-rows-3':count<=8?'grid-cols-2 grid-rows-4':'grid-cols-2 grid-rows-5'}`}
-function rotationFor(index:number,count:number){if(count===1)return 0;if(count===2)return index===0?180:0;if(count===3)return index===0?180:index===1?90:270;if(count===4)return index<2?180:0;return index%2===0?90:270}
+
+function rotateDelta(dx: number, dy: number, rotation: number) {
+  const radians = rotation * Math.PI / 180;
+  return {
+    x: dx * Math.cos(radians) + dy * Math.sin(radians),
+    y: -dx * Math.sin(radians) + dy * Math.cos(radians),
+  };
+}
+
+export default function UtilityPage() {
+  const router = useRouter();
+  const [setupPlayers, setSetupPlayers] = useState(4);
+  const [setupLife, setSetupLife] = useState(40);
+  const [customLife, setCustomLife] = useState(40);
+  const [state, setState] = useState<UtilityState>();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [diceResult, setDiceResult] = useState<string>();
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setState(JSON.parse(raw) as UtilityState);
+    } catch {
+      // Ignore malformed local saves.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [state]);
+
+  useEffect(() => {
+    if (!state?.running) return;
+    const timer = window.setInterval(() => {
+      setState(current => current ? { ...current, seconds: current.seconds + 1 } : current);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [state?.running]);
+
+  const defeated = useMemo(() => new Set(
+    state?.players
+      .filter(player => player.life <= 0 || player.poison >= 10 || Object.values(player.commanderDamage).some(value => value >= 21))
+      .map(player => player.id) ?? [],
+  ), [state]);
+
+  function patchPlayer(id: string, fn: (player: UtilityPlayer) => UtilityPlayer) {
+    setState(current => current ? {
+      ...current,
+      players: current.players.map(player => player.id === id ? fn(player) : player),
+    } : current);
+  }
+
+  function life(id: string, delta: number) {
+    patchPlayer(id, player => ({ ...player, life: player.life + delta }));
+  }
+
+  function counter(id: string, key: CounterKey, delta: number) {
+    patchPlayer(id, player => ({ ...player, [key]: Math.max(0, player[key] + delta) }));
+  }
+
+  function commanderDamage(targetId: string, sourceId: string, delta: number) {
+    patchPlayer(targetId, player => {
+      const current = player.commanderDamage[sourceId] ?? 0;
+      const next = Math.max(0, current + delta);
+      const appliedDelta = next - current;
+      return {
+        ...player,
+        life: player.life - appliedDelta,
+        commanderDamage: { ...player.commanderDamage, [sourceId]: next },
+      };
+    });
+  }
+
+  function quit() {
+    localStorage.removeItem(STORAGE_KEY);
+    router.push('/');
+  }
+
+  function reset() {
+    if (state) setState(freshState(state.players.length, state.startingLife));
+    setMenuOpen(false);
+  }
+
+  function nextTurn() {
+    setState(current => {
+      if (!current) return current;
+      const alive = current.players.filter(player => !defeated.has(player.id));
+      if (!alive.length) return current;
+      const currentIndex = Math.max(-1, alive.findIndex(player => player.id === current.activePlayerId));
+      const next = alive[(currentIndex + 1) % alive.length];
+      return {
+        ...current,
+        activePlayerId: next.id,
+        turn: current.turn + 1,
+        players: current.players.map(player => ({ ...player, storm: 0 })),
+      };
+    });
+  }
+
+  if (!state?.started) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#090b0d] px-5 py-8 text-white">
+        <section className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white/[.04] p-5">
+          <button onClick={() => router.push('/')} className="mb-5 rounded-xl bg-white/5 px-3 py-2 text-sm font-bold text-zinc-300">← Main Menu</button>
+          <div className="text-[11px] font-black uppercase tracking-[.24em] text-cyan-300">Table Utility</div>
+          <h1 className="mt-1 text-3xl font-black">Start Table</h1>
+          <div className="mt-6 space-y-4">
+            <label className="flex items-center justify-between font-bold">
+              Players
+              <select value={setupPlayers} onChange={event => setSetupPlayers(Number(event.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2">
+                {Array.from({ length: 10 }, (_, index) => index + 1).map(value => <option key={value}>{value}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center justify-between font-bold">
+              Starting life
+              <select value={setupLife} onChange={event => setSetupLife(Number(event.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2">
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+                <option value={40}>40</option>
+                <option value={0}>Custom</option>
+              </select>
+            </label>
+            {setupLife === 0 && (
+              <input type="number" value={customLife} onChange={event => setCustomLife(Number(event.target.value) || 1)} className="w-full rounded-xl bg-black/25 px-3 py-3 text-base" />
+            )}
+            <button onClick={() => setState(freshState(setupPlayers, setupLife === 0 ? customLife : setupLife))} className="w-full rounded-2xl bg-cyan-300 py-4 font-black text-zinc-950">START COUNTER</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const count = state.players.length;
+  const singleRotation = count === 1 ? logicalRotation(state.players[0], 0, 1) : 0;
+
+  return (
+    <main className="relative h-[100dvh] w-screen overflow-hidden bg-black text-white [touch-action:none] [user-select:none]">
+      <section className={layoutClass(count)}>
+        {state.players.map((player, index) => (
+          <PlayerZone
+            key={player.id}
+            player={player}
+            index={index}
+            count={count}
+            players={state.players}
+            defeated={defeated.has(player.id)}
+            active={state.activePlayerId === player.id}
+            monarch={state.monarchId === player.id}
+            initiative={state.initiativeId === player.id}
+            onLife={delta => life(player.id, delta)}
+            onPatch={fn => patchPlayer(player.id, fn)}
+            onCounter={(key, delta) => counter(player.id, key, delta)}
+            onCommanderDamage={(sourceId, delta) => commanderDamage(player.id, sourceId, delta)}
+            onMonarch={() => setState(current => current ? { ...current, monarchId: current.monarchId === player.id ? undefined : player.id } : current)}
+            onInitiative={() => setState(current => current ? { ...current, initiativeId: current.initiativeId === player.id ? undefined : player.id } : current)}
+          />
+        ))}
+      </section>
+
+      <TableMenuButton rotation={singleRotation} single={count === 1} onClick={() => setMenuOpen(true)} />
+
+      {menuOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setMenuOpen(false)}>
+          <section
+            onClick={event => event.stopPropagation()}
+            style={{ transform: `rotate(${singleRotation}deg)` }}
+            className="w-[min(82vw,440px)] rounded-[2rem] border border-white/10 bg-[#15181b] p-4 shadow-2xl transition-transform"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Table Menu</div>
+                <div className="mt-1 text-xl font-black">Turn {state.turn} · {formatTime(state.seconds)}</div>
+              </div>
+              <button aria-label="Close table menu" onClick={() => setMenuOpen(false)} className="grid h-12 w-12 place-items-center rounded-xl bg-white/5">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <MenuAction icon={<Timer size={24} />} label={state.running ? 'PAUSE TIMER' : 'START TIMER'} onClick={() => setState(current => current ? { ...current, running: !current.running } : current)} />
+              <MenuAction label="NEXT TURN" accent onClick={nextTurn} />
+              <MenuAction icon={<Dices size={24} />} label="ROLL D20" onClick={() => setDiceResult(`D20: ${1 + Math.floor(Math.random() * 20)}`)} />
+              <MenuAction icon={<Coins size={24} />} label="FLIP COIN" onClick={() => setDiceResult(Math.random() < .5 ? 'HEADS' : 'TAILS')} />
+            </div>
+            {diceResult && <div className="mt-3 rounded-2xl bg-black/25 p-4 text-center text-3xl font-black">{diceResult}</div>}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <MenuAction icon={<RotateCcw size={20} />} label="RESET" onClick={reset} outlined />
+              <MenuAction icon={<LogOut size={20} />} label="QUIT" onClick={quit} danger outlined />
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function TableMenuButton({ rotation, single, onClick }: { rotation: number; single: boolean; onClick: () => void }) {
+  const position = !single
+    ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'
+    : rotation === 0
+      ? 'right-[calc(env(safe-area-inset-right)+1rem)] top-[calc(env(safe-area-inset-top)+1rem)]'
+      : rotation === 90
+        ? 'right-[calc(env(safe-area-inset-right)+1rem)] bottom-[calc(env(safe-area-inset-bottom)+1rem)]'
+        : rotation === 180
+          ? 'left-[calc(env(safe-area-inset-left)+1rem)] bottom-[calc(env(safe-area-inset-bottom)+1rem)]'
+          : 'left-[calc(env(safe-area-inset-left)+1rem)] top-[calc(env(safe-area-inset-top)+1rem)]';
+
+  return (
+    <button
+      aria-label="Open table menu"
+      onClick={onClick}
+      className={`absolute z-40 grid h-14 w-14 place-items-center rounded-2xl border border-white/20 bg-[#121416]/95 shadow-2xl backdrop-blur active:scale-95 ${position}`}
+    >
+      <span style={{ transform: `rotate(${rotation}deg)` }}><Menu size={28} /></span>
+    </button>
+  );
+}
+
+function MenuAction({ icon, label, onClick, accent, danger, outlined }: { icon?: ReactNode; label: string; onClick: () => void; accent?: boolean; danger?: boolean; outlined?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex min-h-14 items-center justify-center gap-2 rounded-2xl px-3 text-sm font-black ${accent ? 'bg-cyan-300 text-zinc-950' : danger ? 'border border-red-400/30 bg-red-400/[.05] text-red-200' : outlined ? 'border border-white/10 bg-transparent' : 'bg-white/10'}`}
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
+function PlayerZone({
+  player,
+  index,
+  count,
+  players,
+  defeated,
+  active,
+  monarch,
+  initiative,
+  onLife,
+  onPatch,
+  onCounter,
+  onCommanderDamage,
+  onMonarch,
+  onInitiative,
+}: {
+  player: UtilityPlayer;
+  index: number;
+  count: number;
+  players: UtilityPlayer[];
+  defeated: boolean;
+  active: boolean;
+  monarch: boolean;
+  initiative: boolean;
+  onLife: (delta: number) => void;
+  onPatch: (fn: (player: UtilityPlayer) => UtilityPlayer) => void;
+  onCounter: (key: CounterKey, delta: number) => void;
+  onCommanderDamage: (sourceId: string, delta: number) => void;
+  onMonarch: () => void;
+  onInitiative: () => void;
+}) {
+  const rotation = logicalRotation(player, index, count);
+  const radians = rotation * Math.PI / 180;
+  const [open, setOpen] = useState(false);
+  const [drag, setDrag] = useState(0);
+  const [gesture, setGesture] = useState<{ x: number; y: number }>();
+  const [settingsSession, setSettingsSession] = useState(0);
+  const drawer = 88;
+  const offset = open ? -drawer : 0;
+
+  function closeSettings() {
+    setOpen(false);
+    setSettingsSession(value => value + 1);
+  }
+
+  function toggleSettings() {
+    if (open) closeSettings();
+    else setOpen(true);
+  }
+
+  function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest('[data-drawer-handle]')) return;
+    setGesture({ x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function pointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!gesture) return;
+    const logical = rotateDelta(event.clientX - gesture.x, event.clientY - gesture.y, rotation);
+    const size = rotation === 90 || rotation === 270 ? event.currentTarget.clientWidth : event.currentTarget.clientHeight;
+    setDrag(Math.max(-drawer, Math.min(drawer, logical.y / Math.max(1, size) * 100)));
+  }
+
+  function pointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!gesture) return;
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    const logical = rotateDelta(dx, dy, rotation);
+    const moved = Math.hypot(dx, dy) > 12;
+
+    if (moved) {
+      const effective = offset + drag;
+      if (effective < -24 || logical.y < -42) setOpen(true);
+      else if (effective > -64 || logical.y > 42) closeSettings();
+    } else if (!open) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const center = rotateDelta(
+        event.clientX - (rect.left + rect.width / 2),
+        event.clientY - (rect.top + rect.height / 2),
+        rotation,
+      );
+      onLife(center.x < 0 ? -1 : 1);
+    }
+
+    setGesture(undefined);
+    setDrag(0);
+  }
+
+  const translate = Math.max(-drawer, Math.min(0, offset + drag));
+  const reveal = Math.max(0, Math.min(1, -translate / drawer));
+  const tx = -translate * Math.sin(radians);
+  const ty = translate * Math.cos(radians);
+  const cardBackground = player.backgroundImageUrl
+    ? `linear-gradient(rgba(0,0,0,.26),rgba(0,0,0,.48)),url("${player.backgroundImageUrl}")`
+    : `linear-gradient(145deg,${player.color}f2,${player.color}b8)`;
+
+  return (
+    <article style={{ background: `linear-gradient(145deg,${player.color}55,#090b0d)` }} className={`relative overflow-hidden ${active ? 'ring-4 ring-inset ring-white/80' : ''} ${defeated ? 'brightness-50' : ''}`}>
+      <div className="absolute inset-0">
+        <div style={{ opacity: reveal, pointerEvents: reveal > .9 ? 'auto' : 'none' }} className="absolute inset-0 z-10 transition-opacity">
+          <PlayerSettings
+            key={settingsSession}
+            player={player}
+            players={players}
+            rotation={rotation}
+            monarch={monarch}
+            initiative={initiative}
+            onPatch={onPatch}
+            onCounter={onCounter}
+            onCommanderDamage={onCommanderDamage}
+            onMonarch={onMonarch}
+            onInitiative={onInitiative}
+          />
+        </div>
+
+        <div
+          onPointerDown={pointerDown}
+          onPointerMove={pointerMove}
+          onPointerUp={pointerUp}
+          onPointerCancel={() => { setGesture(undefined); setDrag(0); }}
+          style={{
+            transform: `translate(${tx}%,${ty}%)`,
+            backgroundImage: cardBackground,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+          className="absolute inset-0 z-20 overflow-hidden shadow-2xl transition-transform duration-200 data-[drag=true]:transition-none"
+          data-drag={gesture !== undefined}
+        >
+          <div style={{ transform: `rotate(${rotation}deg)` }} className="pointer-events-none absolute inset-0 transition-transform duration-200">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <div className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-[.14em] text-white/80">
+                  {monarch && <Crown size={14} />}{initiative && <Zap size={14} />}{player.sick && <span>●</span>}{player.name}
+                </div>
+                <div className="text-[clamp(4.5rem,18vw,10rem)] font-black leading-none tabular-nums tracking-[-.06em] [text-shadow:0_3px_18px_rgba(0,0,0,.65)]">{player.life}</div>
+                <div className="mt-1 flex justify-center gap-3 text-xs font-black text-white/80"><span>−</span><span>tap sides</span><span>+</span></div>
+                {(player.poison > 0 || player.commanderTax > 0) && (
+                  <div className="mt-2 flex justify-center gap-1 text-[10px] font-black">
+                    {player.poison > 0 && <span className="rounded-full bg-black/40 px-2 py-1">☠ {player.poison}</span>}
+                    {player.commanderTax > 0 && <span className="rounded-full bg-black/40 px-2 py-1">Tax +{player.commanderTax}</span>}
+                  </div>
+                )}
+                {defeated && <div className="mt-2 rounded-full bg-black/50 px-3 py-1 text-xs font-black uppercase">Defeated</div>}
+              </div>
+            </div>
+          </div>
+          <DrawerHandle rotation={rotation} open={open} onClick={toggleSettings} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DrawerHandle({ rotation, open, onClick }: { rotation: number; open: boolean; onClick: () => void }) {
+  const position = rotation === 0
+    ? 'bottom-0 left-1/2 -translate-x-1/2 items-end pb-3'
+    : rotation === 180
+      ? 'top-0 left-1/2 -translate-x-1/2 items-start pt-3'
+      : rotation === 90
+        ? 'left-0 top-1/2 -translate-y-1/2 items-center justify-start pl-3'
+        : 'right-0 top-1/2 -translate-y-1/2 items-center justify-end pr-3';
+  const bar = rotation === 90 || rotation === 270 ? 'h-10 w-1' : 'h-1 w-10';
+
+  return (
+    <button data-drawer-handle aria-label={open ? 'Close player settings' : 'Open player settings'} onClick={event => { event.stopPropagation(); onClick(); }} className={`absolute z-30 flex h-20 w-20 justify-center ${position}`}>
+      <span className={`${bar} rounded-full bg-white/85 shadow`} />
+    </button>
+  );
+}
+
+function PlayerSettings({
+  player,
+  players,
+  rotation,
+  monarch,
+  initiative,
+  onPatch,
+  onCounter,
+  onCommanderDamage,
+  onMonarch,
+  onInitiative,
+}: {
+  player: UtilityPlayer;
+  players: UtilityPlayer[];
+  rotation: number;
+  monarch: boolean;
+  initiative: boolean;
+  onPatch: (fn: (player: UtilityPlayer) => UtilityPlayer) => void;
+  onCounter: (key: CounterKey, delta: number) => void;
+  onCommanderDamage: (sourceId: string, delta: number) => void;
+  onMonarch: () => void;
+  onInitiative: () => void;
+}) {
+  const [page, setPage] = useState(0);
+  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number }>();
+  const [panel, setPanel] = useState<'home' | 'background' | 'name'>('home');
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(player.backgroundImageUrl ? 'card' : 'preset');
+  const [cardQuery, setCardQuery] = useState(player.backgroundCardName ?? '');
+  const [cardBusy, setCardBusy] = useState(false);
+  const [cardStatus, setCardStatus] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+
+  useEffect(() => {
+    const query = cardQuery.trim();
+    if (panel !== 'background' || backgroundMode !== 'card' || query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      setSuggestBusy(true);
+      try {
+        const response = await fetch(`/api/cards/autocomplete?q=${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error();
+        const data = await response.json() as string[] | { data?: string[]; suggestions?: string[] };
+        setSuggestions((Array.isArray(data) ? data : (data.data ?? data.suggestions ?? [])).slice(0, 8));
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSuggestBusy(false);
+      }
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [cardQuery, panel, backgroundMode]);
+
+  function settingsPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (panel !== 'home' || (event.target as HTMLElement).closest('button,input,label')) return;
+    setSwipeStart({ x: event.clientX, y: event.clientY });
+  }
+
+  function settingsPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!swipeStart) return;
+    const logical = rotateDelta(event.clientX - swipeStart.x, event.clientY - swipeStart.y, rotation);
+    if (logical.x < -45) setPage(current => Math.min(2, current + 1));
+    else if (logical.x > 45) setPage(current => Math.max(0, current - 1));
+    setSwipeStart(undefined);
+  }
+
+  async function useCardBackground(name?: string) {
+    const query = (name ?? cardQuery).trim();
+    if (!query) return;
+    setCardBusy(true);
+    setCardStatus('');
+    try {
+      const response = await fetch(`/api/cards/named?name=${encodeURIComponent(query)}`);
+      if (!response.ok) throw new Error('Card not found.');
+      const card = await response.json() as CardLookup;
+      if (!card.imageUrl) throw new Error('No image available.');
+      onPatch(current => ({ ...current, backgroundImageUrl: card.imageUrl, backgroundCardName: card.name }));
+      setCardQuery(card.name);
+      setSuggestions([]);
+      setCardStatus(`Using ${card.name}`);
+    } catch (error) {
+      setCardStatus(error instanceof Error ? error.message : 'Could not load card.');
+    } finally {
+      setCardBusy(false);
+    }
+  }
+
+  const facing: Facing = player.orientation ?? 'auto';
+
+  if (panel === 'background') {
+    return (
+      <SettingsShell rotation={rotation}>
+        <BackButton onClick={() => setPanel('home')} />
+        <div className="w-full max-w-sm">
+          <h2 className="text-center text-sm font-black uppercase tracking-[.2em] text-zinc-300">Background</h2>
+          <div className="mt-5 grid grid-cols-3 rounded-2xl bg-black/30 p-1">
+            {(['preset', 'card', 'custom'] as BackgroundMode[]).map(mode => (
+              <button key={mode} onClick={() => setBackgroundMode(mode)} className={`rounded-xl py-3 text-xs font-black uppercase ${backgroundMode === mode ? 'bg-white text-zinc-950' : 'text-zinc-400'}`}>
+                {mode === 'preset' ? 'Colors' : mode === 'card' ? 'MTG Card' : 'Custom'}
+              </button>
+            ))}
+          </div>
+
+          {backgroundMode === 'preset' && (
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              {COLORS.map(color => (
+                <button key={color} aria-label={`Use ${color}`} onClick={() => onPatch(current => ({ ...current, color, backgroundImageUrl: undefined, backgroundCardName: undefined }))} style={{ backgroundColor: color }} className={`h-12 w-12 rounded-full ${player.color === color && !player.backgroundImageUrl ? 'ring-4 ring-white' : ''}`} />
+              ))}
+            </div>
+          )}
+
+          {backgroundMode === 'custom' && (
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <input type="color" value={player.color} onChange={event => onPatch(current => ({ ...current, color: event.target.value, backgroundImageUrl: undefined, backgroundCardName: undefined }))} className="h-20 w-24 bg-transparent" />
+              <span className="font-mono text-sm uppercase text-zinc-400">{player.color}</span>
+            </div>
+          )}
+
+          {backgroundMode === 'card' && (
+            <div className="relative mt-6">
+              <div className="flex gap-2">
+                <input
+                  value={cardQuery}
+                  onChange={event => setCardQuery(event.target.value)}
+                  onKeyDown={event => { if (event.key === 'Enter' && !cardBusy) void useCardBackground(); }}
+                  placeholder="Search MTG card…"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="search"
+                  style={{ fontSize: '16px' }}
+                  className="min-w-0 flex-1 rounded-xl bg-black/30 px-4 py-3 outline-none"
+                />
+                <button onClick={() => void useCardBackground()} disabled={cardBusy} className="rounded-xl bg-blue-500 px-5 text-xs font-black disabled:opacity-50">{cardBusy ? '…' : 'USE'}</button>
+              </div>
+              {(suggestions.length > 0 || suggestBusy) && (
+                <div className="absolute left-0 right-0 top-[3.4rem] z-50 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[#20202a] shadow-2xl [touch-action:pan-y]">
+                  {suggestBusy && suggestions.length === 0
+                    ? <div className="px-4 py-3 text-sm text-zinc-400">Searching…</div>
+                    : suggestions.map(name => (
+                      <button key={name} onPointerDown={event => event.preventDefault()} onClick={() => void useCardBackground(name)} className="block w-full border-b border-white/5 px-4 py-3 text-left text-base font-semibold last:border-0">{name}</button>
+                    ))}
+                </div>
+              )}
+              {player.backgroundImageUrl && (
+                <div className="mt-4 flex items-center gap-3">
+                  <img src={player.backgroundImageUrl} alt="Selected card" className="h-24 w-16 rounded-lg object-cover" />
+                  <div className="min-w-0">
+                    <div className="truncate font-black">{player.backgroundCardName}</div>
+                    <button onClick={() => onPatch(current => ({ ...current, backgroundImageUrl: undefined, backgroundCardName: undefined }))} className="mt-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-black">REMOVE</button>
+                  </div>
+                </div>
+              )}
+              {cardStatus && <div className="mt-3 text-xs text-zinc-400">{cardStatus}</div>}
+            </div>
+          )}
+        </div>
+      </SettingsShell>
+    );
+  }
+
+  if (panel === 'name') {
+    return (
+      <SettingsShell rotation={rotation}>
+        <BackButton onClick={() => setPanel('home')} />
+        <div className="w-full max-w-sm text-center">
+          <UserRound className="mx-auto" size={42} strokeWidth={1.6} />
+          <div className="mt-3 text-xs font-black uppercase tracking-[.2em] text-zinc-400">Name</div>
+          <input autoFocus value={player.name} onChange={event => onPatch(current => ({ ...current, name: event.target.value }))} style={{ fontSize: '16px' }} className="mt-4 w-full rounded-2xl bg-black/30 px-4 py-4 text-center font-black outline-none" />
+          <div className="mt-5 text-xs font-black uppercase tracking-[.2em] text-zinc-500">Facing</div>
+          <div className="mt-3 grid grid-cols-5 gap-2">
+            {([['auto', 'A'], [0, '↑'], [90, '→'], [180, '↓'], [270, '←']] as [Facing, string][]).map(([value, label]) => (
+              <button key={String(value)} onClick={() => onPatch(current => ({ ...current, orientation: value }))} className={`h-12 rounded-xl font-black ${facing === value ? 'bg-blue-500' : 'bg-white/10'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </SettingsShell>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 bg-[#373641] text-white">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          style={{ transform: `rotate(${rotation}deg)` }}
+          className="relative flex aspect-square w-[min(82%,540px)] max-h-[82%] items-center justify-center transition-transform duration-200"
+          onPointerDown={settingsPointerDown}
+          onPointerUp={settingsPointerUp}
+          onPointerCancel={() => setSwipeStart(undefined)}
+        >
+          <div className="h-full w-full overflow-hidden">
+            <div style={{ transform: `translateX(-${page * 100}%)` }} className="flex h-full w-full transition-transform duration-200 ease-out">
+              <SettingsPage>
+                <Dashboard
+                  player={player}
+                  onBackground={() => setPanel('background')}
+                  onKill={() => onPatch(current => ({ ...current, life: 0 }))}
+                  onName={() => setPanel('name')}
+                  onTax={delta => onCounter('commanderTax', delta)}
+                  onPoison={delta => onCounter('poison', delta)}
+                />
+              </SettingsPage>
+              <SettingsPage>
+                <div className="w-full max-w-sm">
+                  <div className="text-center text-xs font-black uppercase tracking-[.18em] text-zinc-400">Counters</div>
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <TinyCounter label="Poison" value={player.poison} onMinus={() => onCounter('poison', -1)} onPlus={() => onCounter('poison', 1)} />
+                    <TinyCounter label="Energy" value={player.energy} onMinus={() => onCounter('energy', -1)} onPlus={() => onCounter('energy', 1)} />
+                    <TinyCounter label="Experience" value={player.experience} onMinus={() => onCounter('experience', -1)} onPlus={() => onCounter('experience', 1)} />
+                    <TinyCounter label="Storm" value={player.storm} onMinus={() => onCounter('storm', -1)} onPlus={() => onCounter('storm', 1)} />
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button onClick={onMonarch} className={`rounded-xl py-3 text-xs font-black ${monarch ? 'bg-amber-300 text-zinc-950' : 'bg-white/10'}`}>MONARCH</button>
+                    <button onClick={onInitiative} className={`rounded-xl py-3 text-xs font-black ${initiative ? 'bg-violet-300 text-zinc-950' : 'bg-white/10'}`}>INITIATIVE</button>
+                  </div>
+                </div>
+              </SettingsPage>
+              <SettingsPage>
+                <div className="w-full max-w-sm">
+                  <div className="text-center text-xs font-black uppercase tracking-[.18em] text-zinc-400">Commander</div>
+                  {players.length > 1 ? (
+                    <div className="mt-4 space-y-2">
+                      {players.filter(source => source.id !== player.id).map(source => (
+                        <div key={source.id} className="grid grid-cols-[1fr_44px_52px_44px] items-center gap-2 rounded-xl bg-black/25 p-3">
+                          <span className="truncate text-xs font-bold">{source.name}</span>
+                          <button onClick={() => onCommanderDamage(source.id, -1)} className="h-11 rounded-xl bg-white/10 font-black">−</button>
+                          <span className="text-center text-lg font-black">{player.commanderDamage[source.id] ?? 0}</span>
+                          <button onClick={() => onCommanderDamage(source.id, 1)} className="h-11 rounded-xl bg-red-400/15 font-black text-red-200">+</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-5 text-center text-sm text-zinc-400">Commander damage appears here in multiplayer.</div>
+                  )}
+                </div>
+              </SettingsPage>
+            </div>
+          </div>
+          <div className="absolute bottom-0 left-1/2 flex -translate-x-1/2 gap-3">
+            {[0, 1, 2].map(index => (
+              <button key={index} aria-label={`Settings page ${index + 1}`} onClick={() => setPage(index)} className={`h-2 rounded-full ${page === index ? 'w-7 bg-white' : 'w-2 bg-white/30'}`} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ player, onBackground, onKill, onName, onTax, onPoison }: {
+  player: UtilityPlayer;
+  onBackground: () => void;
+  onKill: () => void;
+  onName: () => void;
+  onTax: (delta: number) => void;
+  onPoison: (delta: number) => void;
+}) {
+  return (
+    <div className="flex w-full flex-col items-center justify-center gap-5">
+      <div className="flex items-center justify-center gap-4">
+        <MiniCounter value={player.commanderTax} onMinus={() => onTax(-2)} onPlus={() => onTax(2)} label="Tax" />
+        <MiniCounter value={player.poison} onMinus={() => onPoison(-1)} onPlus={() => onPoison(1)} label="Poison" />
+      </div>
+      <div className="h-px w-4/5 bg-white/10" />
+      <div className="flex items-start justify-center gap-5 sm:gap-8">
+        <Action icon={<ImageIcon size={44} strokeWidth={1.5} />} label="BACKGROUND" onClick={onBackground} />
+        <Action icon={<Skull size={44} strokeWidth={1.5} />} label="KILL PLAYER" onClick={onKill} danger />
+        <Action icon={<UserRound size={44} strokeWidth={1.5} />} label="NAME" onClick={onName} />
+      </div>
+    </div>
+  );
+}
+
+function Action({ icon, label, onClick, danger }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button onClick={onClick} className={`flex min-w-[78px] flex-col items-center justify-center gap-2 text-center ${danger ? 'text-red-200' : 'text-white'}`}>
+      {icon}
+      <span className="text-[9px] font-black tracking-[.08em]">{label}</span>
+    </button>
+  );
+}
+
+function MiniCounter({ value, onMinus, onPlus, label }: { value: number; onMinus: () => void; onPlus: () => void; label: string }) {
+  return (
+    <div className="rounded-xl bg-black/15 px-2 py-2">
+      <div className="mb-1 text-center text-[8px] font-black uppercase tracking-wider text-white/50">{label}</div>
+      <div className="grid grid-cols-[34px_42px_34px] items-center gap-1">
+        <button onClick={onMinus} className="h-9 rounded-lg bg-white/5 text-xl">−</button>
+        <div className="text-center text-lg font-black">{value}</div>
+        <button onClick={onPlus} className="h-9 rounded-lg bg-white/5 text-xl">+</button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsShell({ rotation, children }: { rotation: number; children: ReactNode }) {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-[#373641] text-white">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div style={{ transform: `rotate(${rotation}deg)` }} className="relative flex aspect-square w-[min(82%,540px)] max-h-[82%] items-center justify-center overflow-visible p-5 transition-transform duration-200">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="absolute bottom-2 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/65 px-6 py-3 text-sm font-black shadow-2xl backdrop-blur">
+      <ChevronLeft size={19} /> BACK
+    </button>
+  );
+}
+
+function SettingsPage({ children }: { children: ReactNode }) {
+  return <div className="flex h-full w-full shrink-0 items-center justify-center px-3 py-8">{children}</div>;
+}
+
+function TinyCounter({ label, value, onMinus, onPlus }: { label: string; value: number; onMinus: () => void; onPlus: () => void }) {
+  return (
+    <div className="rounded-xl bg-black/20 p-3">
+      <div className="text-center text-[8px] font-black uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className="mt-2 grid grid-cols-[36px_1fr_36px] items-center gap-1">
+        <button onClick={onMinus} className="h-9 rounded-lg bg-white/10 font-black">−</button>
+        <div className="text-center text-lg font-black">{value}</div>
+        <button onClick={onPlus} className="h-9 rounded-lg bg-white/10 font-black">+</button>
+      </div>
+    </div>
+  );
+}
+
+function layoutClass(count: number) {
+  if (count === 1) return 'grid h-full w-full grid-cols-1 grid-rows-1 bg-black';
+  if (count === 2) return 'grid h-full w-full grid-rows-2 gap-[2px] bg-black';
+  if (count === 3) return 'grid h-full w-full grid-cols-2 grid-rows-2 gap-[2px] bg-black [&>*:first-child]:col-span-2';
+  if (count === 4) return 'grid h-full w-full grid-cols-2 grid-rows-2 gap-[2px] bg-black';
+  return `grid h-full w-full gap-[2px] bg-black ${count <= 6 ? 'grid-cols-2 grid-rows-3' : count <= 8 ? 'grid-cols-2 grid-rows-4' : 'grid-cols-2 grid-rows-5'}`;
+}
