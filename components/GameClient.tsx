@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CardDefinition, CardInstance } from '@/types/card';
-import type { GameState } from '@/types/game';
+import type { GameState, PendingAIAction } from '@/types/game';
 import { loadGame, saveGame } from '@/lib/storage/gameStorage';
 import { createCardInstance, createToken, newGame } from '@/lib/game/utils';
 import { reduceGame, type BlockAssignment, type GameAction } from '@/lib/game/reducer';
@@ -60,11 +60,12 @@ export function GameClient() {
      {attackMode&&<button disabled={!attackers.length||Boolean(game.pendingCombat)} onClick={()=>dispatch({type:'PLAYER_ATTACK',attackerIds:attackers,defenderId:ai.id})} className="mt-2 w-full rounded-xl bg-red-500 py-3 font-black disabled:opacity-40">ATTACK WITH {attackers.length || 0}</button>}
     </section>
 
-    {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">Opponent is taking their turn. Respond only when prompted.</div>}
+    {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">{game.pendingAIAction?'Opponent cast a spell. Resolve or counter it to continue.':game.pendingCombat?'Opponent is attacking. Resolve combat to continue.':'Opponent is taking their turn.'}</div>}
     <QuickReference active={isPlayerTurn}/>
    </div>
 
    <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3">
+     {game.pendingAIAction&&<AIActionPanel action={game.pendingAIAction} onResolve={()=>dispatch({type:'RESOLVE_AI_ACTION'})} onCounter={()=>dispatch({type:'COUNTER_AI_ACTION'})}/>} 
      <div className="shrink-0">
       <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onResolveBlocks={resolveBlocks} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
      </div>
@@ -75,6 +76,26 @@ export function GameClient() {
   <CardSearch open={searchOpen} onClose={()=>setSearchOpen(false)} onChoose={addDefinition}/><TokenCreator open={tokenOpen} onClose={()=>setTokenOpen(false)} onAdd={addManual}/><ManualCardCreator open={manualOpen} onClose={()=>setManualOpen(false)} onAdd={addManual}/>
   <CardActionSheet card={selected} onClose={()=>setSelected(undefined)} onUpdate={(patch,log)=>{if(selected)dispatch({type:'UPDATE_CARD',playerId:'player',instanceId:selected.instanceId,patch,log});setSelected(undefined)}} onMove={zone=>{if(selected)dispatch({type:'MOVE_CARD',playerId:'player',instanceId:selected.instanceId,zone});setSelected(undefined)}}/>
  </main>;
+}
+
+function AIActionPanel({action,onResolve,onCounter}:{action:PendingAIAction;onResolve:()=>void;onCounter:()=>void}){
+ const detail=action.kind==='creature'
+  ? `${action.power ?? 0}/${action.toughness ?? 0}${action.flying?' · Flying':''}`
+  : action.kind==='removal'
+   ? `Target: ${action.targetName ?? 'your creature'}`
+   : action.kind==='draw'
+    ? `Draw ${action.amount ?? 2} cards`
+    : `Mana artifact · +${action.amount ?? 1} mana`;
+ return <section className="shrink-0 rounded-2xl border border-sky-400/35 bg-sky-400/[.08] p-4 shadow-lg shadow-sky-950/20">
+  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Opponent action — response required</div>
+  <div className="mt-1 text-xl font-black text-zinc-50">{action.cardName}</div>
+  <div className="mt-1 text-sm font-bold text-zinc-300">{detail}</div>
+  <p className="mt-2 text-xs leading-5 text-zinc-400">The opponent has cast this spell and paid its cost. Nothing resolves until you choose an option.</p>
+  <div className="mt-3 grid grid-cols-2 gap-2">
+   <button onClick={onResolve} className="rounded-xl bg-emerald-400 px-3 py-3 font-black text-zinc-950">RESOLVE</button>
+   <button onClick={onCounter} className="rounded-xl border border-sky-300/30 bg-white/10 px-3 py-3 font-black text-zinc-100">COUNTER</button>
+  </div>
+ </section>
 }
 
 function QuickReference({active}:{active:boolean}){
