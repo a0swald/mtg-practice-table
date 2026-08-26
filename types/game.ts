@@ -47,6 +47,8 @@ export interface PendingAIAction {
   kind: 'creature' | 'ramp' | 'draw' | 'removal';
   cardName: string;
   manaCost: number;
+  typeLine: string;
+  oracleText?: string;
   power?: number;
   toughness?: number;
   flying?: boolean;
