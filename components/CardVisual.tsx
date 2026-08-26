@@ -15,7 +15,11 @@ export function CardVisual({
 }) {
   const stats = currentStats(card);
   const qty = card.tokenQuantity ?? 1;
-  const unavailableLabel = card.tapped ? 'TAPPED' : card.summoningSick ? 'SUMMONING SICK' : 'UNAVAILABLE';
+  const unavailableLabel = card.combatDisabled
+    ? card.combatDisabledBy ? `DISABLED — ${card.combatDisabledBy}` : 'CANNOT ATTACK / BLOCK'
+    : card.tapped ? 'TAPPED'
+      : card.summoningSick ? 'SUMMONING SICK'
+        : 'UNAVAILABLE';
 
   return (
     <button
@@ -45,7 +49,8 @@ export function CardVisual({
       {stats && <div className="absolute bottom-1 right-1 rounded-md bg-black/90 px-1.5 py-0.5 text-[11px] font-black">{stats.power}/{stats.toughness}</div>}
       {card.plusOneCounters > 0 && <Badge className="left-1 top-1">+{card.plusOneCounters}</Badge>}
       {card.damageMarked > 0 && <Badge className="bottom-1 left-1">Dmg {card.damageMarked}</Badge>}
-      {card.summoningSick && !combatUnavailable && <Badge className="right-1 top-1">S</Badge>}
+      {card.combatDisabled && !combatUnavailable && <Badge className="right-1 top-1">NO ATK</Badge>}
+      {card.summoningSick && !combatUnavailable && !card.combatDisabled && <Badge className="right-1 top-1">S</Badge>}
       {qty > 1 && <Badge className="left-1/2 top-1 -translate-x-1/2">×{qty}</Badge>}
     </button>
   );
