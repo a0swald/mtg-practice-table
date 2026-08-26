@@ -1,7 +1,7 @@
 import type { CardInstance, Zone } from '@/types/card';
 import type { GameState, PendingCombat } from '@/types/game';
-import { runAITurn } from '@/lib/ai/turn';
-import { uid } from './utils';
+import { continueAITurn, runAITurn } from '@/lib/ai/turn';
+import { createToken, uid } from './utils';
 
 export type BlockAssignment = {
   attackerId: string;
@@ -15,6 +15,8 @@ export type GameAction =
   | { type: 'MOVE_CARD'; playerId: string; instanceId: string; zone: Zone }
   | { type: 'PASS_TURN' }
   | { type: 'SET_COMBAT'; combat?: PendingCombat }
+  | { type: 'RESOLVE_AI_ACTION' }
+  | { type: 'COUNTER_AI_ACTION' }
   | { type: 'RESOLVE_AI_DAMAGE'; amount: number }
   | { type: 'RESOLVE_BLOCKS'; assignments: BlockAssignment[] }
   | { type: 'PLAYER_ATTACK'; attackerIds: string[]; defenderId: string }
@@ -37,6 +39,7 @@ function cleanupTurn(game: GameState) {
 function startPlayerTurn(game: GameState): GameState {
   cleanupTurn(game);
   game.pendingCombat = undefined;
+  game.pendingAIAction = undefined;
   game.activePlayerId = 'player';
   game.turnNumber += 1;
   game.spellsCastThisTurn = 0;
@@ -49,18 +52,17 @@ function startPlayerTurn(game: GameState): GameState {
   return game;
 }
 
+function finishAIContinuation(game: GameState, aiId: string): GameState {
+  const continued = continueAITurn(game, aiId);
+  return continued.pendingCombat ? continued : startPlayerTurn(continued);
+}
+
 function cardPower(card: CardInstance): number {
-  return (card.basePower ?? 0)
-    + card.plusOneCounters
-    - card.minusOneCounters
-    + card.temporaryPowerModifier;
+  return (card.basePower ?? 0) + card.plusOneCounters - card.minusOneCounters + card.temporaryPowerModifier;
 }
 
 function cardToughness(card: CardInstance): number {
-  return (card.baseToughness ?? 0)
-    + card.plusOneCounters
-    - card.minusOneCounters
-    + card.temporaryToughnessModifier;
+  return (card.baseToughness ?? 0) + card.plusOneCounters - card.minusOneCounters + card.temporaryToughnessModifier;
 }
 
 function moveLethalCreatures(game: GameState) {
@@ -73,9 +75,7 @@ function moveLethalCreatures(game: GameState) {
         card.zone = 'graveyard';
         player.graveyard.push(card);
         withLog(game, 'Combat', `${card.name} was destroyed by lethal damage.`);
-      } else {
-        survivors.push(card);
-      }
+      } else survivors.push(card);
     });
     player.battlefield = survivors;
   });
@@ -133,20 +133,57 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
       const cards = player.battlefield.filter(card => action.attackerIds.includes(card.instanceId));
       cards.forEach(card => { card.tapped = true; });
       const total = cards.reduce((sum, card) => sum + cardPower(card), 0);
-      game.pendingCombat = {
-        attackerId: player.id,
-        defenderId: action.defenderId,
-        attackerInstanceIds: action.attackerIds,
-        totalPower: total,
-        source: 'player',
-      };
+      game.pendingCombat = { attackerId: player.id, defenderId: action.defenderId, attackerInstanceIds: action.attackerIds, totalPower: total, source: 'player' };
       withLog(game, player.name, `Attacks for ${total}.`);
     }
   }
 
+  if (action.type === 'RESOLVE_AI_ACTION' && game.pendingAIAction) {
+    const pending = game.pendingAIAction;
+    const ai = getPlayer(pending.aiId);
+    const human = getPlayer('player');
+    game.pendingAIAction = undefined;
+
+    if (ai) {
+      if (pending.kind === 'creature') {
+        const card = createToken(ai.id, pending.cardName, pending.power, pending.toughness);
+        card.summoningSick = true;
+        ai.battlefield.push(card);
+        withLog(game, ai.name, `${pending.cardName} resolved and entered the battlefield.`);
+      } else if (pending.kind === 'ramp') {
+        const stone = createToken(ai.id, pending.cardName);
+        stone.summoningSick = false;
+        ai.battlefield.push(stone);
+        withLog(game, ai.name, `${pending.cardName} resolved.`);
+      } else if (pending.kind === 'draw') {
+        ai.handCount += pending.amount ?? 2;
+        withLog(game, ai.name, `${pending.cardName} resolved; drew ${pending.amount ?? 2} cards.`);
+      } else if (pending.kind === 'removal' && human && pending.targetInstanceId) {
+        const index = human.battlefield.findIndex(card => card.instanceId === pending.targetInstanceId);
+        if (index >= 0) {
+          const [destroyed] = human.battlefield.splice(index, 1);
+          destroyed.zone = 'graveyard';
+          human.graveyard.push(destroyed);
+          withLog(game, ai.name, `${pending.cardName} resolved; destroyed ${destroyed.name}.`);
+        } else {
+          withLog(game, ai.name, `${pending.cardName} resolved, but its target was no longer available.`);
+        }
+      }
+      return finishAIContinuation(game, ai.id);
+    }
+  }
+
+  if (action.type === 'COUNTER_AI_ACTION' && game.pendingAIAction) {
+    const pending = game.pendingAIAction;
+    const ai = getPlayer(pending.aiId);
+    game.pendingAIAction = undefined;
+    withLog(game, 'You', `Countered ${pending.cardName}.`);
+    if (ai) return finishAIContinuation(game, ai.id);
+  }
+
   if (action.type === 'SET_COMBAT') {
     game.pendingCombat = action.combat;
-    if (!action.combat && game.activePlayerId !== 'player') return startPlayerTurn(game);
+    if (!action.combat && game.activePlayerId !== 'player' && !game.pendingAIAction) return startPlayerTurn(game);
   }
 
   if (action.type === 'RESOLVE_AI_DAMAGE') {
@@ -164,37 +201,30 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
     const combat = game.pendingCombat;
     const human = getPlayer('player');
     const attackerPlayer = combat ? getPlayer(combat.attackerId) : undefined;
-
     if (combat?.source === 'ai' && human && attackerPlayer) {
       const assignmentByAttacker = new Map(action.assignments.map(entry => [entry.attackerId, entry.blockerId]));
       let unblockedDamage = 0;
-
       combat.attackerInstanceIds.forEach(attackerId => {
         const attacker = attackerPlayer.battlefield.find(card => card.instanceId === attackerId);
         if (!attacker) return;
-
         const blockerId = assignmentByAttacker.get(attackerId);
         const blocker = blockerId ? human.battlefield.find(card => card.instanceId === blockerId) : undefined;
-
         if (!blocker) {
           unblockedDamage += cardPower(attacker);
           withLog(game, 'Combat', `${attacker.name} was unblocked for ${cardPower(attacker)} damage.`);
           return;
         }
-
         const attackerDamage = cardPower(blocker);
         const blockerDamage = cardPower(attacker);
         attacker.damageMarked += attackerDamage;
         blocker.damageMarked += blockerDamage;
         withLog(game, 'Combat', `${blocker.name} blocked ${attacker.name}: ${attackerDamage} damage to attacker, ${blockerDamage} damage to blocker.`);
       });
-
       if (unblockedDamage > 0) {
         const old = human.life;
         human.life -= unblockedDamage;
         withLog(game, 'Combat', `You took ${unblockedDamage} unblocked damage (${old} → ${human.life}).`);
       }
-
       moveLethalCreatures(game);
       game.pendingCombat = undefined;
       return startPlayerTurn(game);
@@ -205,7 +235,6 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
 
   if (action.type === 'PASS_TURN') {
     if (game.activePlayerId !== 'player') return game;
-
     cleanupTurn(game);
     const ai = game.players.find(player => player.isAI);
     if (ai) {
@@ -214,8 +243,7 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
       game.spellsCastThisTurn = 0;
       withLog(game, ai.name, 'Turn started.');
       game = runAITurn(game, ai.id);
-
-      if (!game.pendingCombat) return startPlayerTurn(game);
+      if (!game.pendingCombat && !game.pendingAIAction) return startPlayerTurn(game);
     }
   }
 
