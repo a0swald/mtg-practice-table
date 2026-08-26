@@ -19,7 +19,7 @@ async function updateDuckDns(config: Config) {
 
 async function configureCaddy(domain: string) {
   try {
-    const caddyfile = `${domain}.duckdns.org {\n  reverse_proxy web:3100\n}\n`;
+    const caddyfile = `{\n  admin 0.0.0.0:2019\n}\n\n${domain}.duckdns.org {\n  reverse_proxy web:3100\n}\n`;
     const adapted = await fetch(`${caddyAdmin}/adapt`, {
       method: 'POST',
       headers: { 'content-type': 'text/caddyfile' },
