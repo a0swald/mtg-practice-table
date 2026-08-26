@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import type { CardDefinition, CardInstance } from '@/types/card';
 import type { GameState, PendingAIAction } from '@/types/game';
 import { loadGame, saveGame } from '@/lib/storage/gameStorage';
-import { createCardInstance, createToken, newGame } from '@/lib/game/utils';
+import { createCardInstance, createToken, currentStats, newGame } from '@/lib/game/utils';
 import { reduceGame, type BlockAssignment, type GameAction } from '@/lib/game/reducer';
 import { Battlefield } from './Battlefield';
 import { PlayerHeader } from './PlayerHeader';
@@ -15,13 +15,14 @@ import { ManualCardCreator } from './ManualCardCreator';
 import { GameLog } from './GameLog';
 import { CombatPanel } from './CombatPanel';
 import { TurnControls } from './TurnControls';
+import { SpellResolver } from './SpellResolver';
 
 const fallbackSettings = { aiOpponents: 1 as const, startingLife: 20, difficulty: 'learning' as const, commanderDamageEnabled: true, tutorMode: true, simplifiedTurns: true };
 
 export function GameClient() {
  const router=useRouter();
  const [game,setGame]=useState<GameState|null>(null); const [past,setPast]=useState<GameState[]>([]); const [future,setFuture]=useState<GameState[]>([]);
- const [selected,setSelected]=useState<CardInstance>(); const [searchOpen,setSearchOpen]=useState(false); const [tokenOpen,setTokenOpen]=useState(false); const [manualOpen,setManualOpen]=useState(false); const [attackMode,setAttackMode]=useState(false); const [attackers,setAttackers]=useState<string[]>([]);
+ const [selected,setSelected]=useState<CardInstance>(); const [searchOpen,setSearchOpen]=useState(false); const [tokenOpen,setTokenOpen]=useState(false); const [manualOpen,setManualOpen]=useState(false); const [attackMode,setAttackMode]=useState(false); const [attackers,setAttackers]=useState<string[]>([]); const [resolvingSpell,setResolvingSpell]=useState<CardDefinition>();
  useEffect(()=>{setGame(loadGame()??newGame(fallbackSettings))},[]);
  useEffect(()=>{if(game)saveGame(game)},[game]);
  const dispatch=(action:GameAction)=>{setGame(current=>{if(!current)return current;setPast(h=>[...h.slice(-39),current]);setFuture([]);return reduceGame(current,action)});};
@@ -36,11 +37,26 @@ export function GameClient() {
   ? ai.battlefield.filter(card=>game.pendingCombat?.attackerInstanceIds.includes(card.instanceId))
   : [];
  const cardTap=(card:CardInstance)=>{if(attackMode){if(eligible.some(c=>c.instanceId===card.instanceId)){setAttackers(a=>a.includes(card.instanceId)?a.filter(id=>id!==card.instanceId):[...a,card.instanceId]);}return;}setSelected(card)};
- const addDefinition=(definition:CardDefinition)=>dispatch({type:'ADD_CARD',playerId:'player',card:createCardInstance(definition,'player','battlefield')});
+ const addDefinition=(definition:CardDefinition)=>{
+  const type=definition.typeLine.toLowerCase();
+  if(type.includes('instant')||type.includes('sorcery')){setResolvingSpell(definition);return;}
+  dispatch({type:'ADD_CARD',playerId:'player',card:createCardInstance(definition,'player','battlefield')});
+ };
  const addManual=(name:string,p?:number,t?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,p,t)});
  const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([])};
  const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Assigning blockers for incoming combat.'});
  const resolveBlocks=(assignments:BlockAssignment[])=>dispatch({type:'RESOLVE_BLOCKS',assignments});
+ const damageOpponentCard=(card:CardInstance,amount:number)=>{
+  const next=card.damageMarked+amount;
+  dispatch({type:'UPDATE_CARD',playerId:ai.id,instanceId:card.instanceId,patch:{damageMarked:next},log:`${resolvingSpell?.name ?? 'Spell'} dealt ${amount} damage to ${card.name}.`});
+  const stats=currentStats(card);
+  if(stats&&next>=stats.toughness)dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'});
+ };
+ const finishSpell=()=>{
+  if(!resolvingSpell)return;
+  dispatch({type:'CAST_PLAYER_SPELL',card:createCardInstance(resolvingSpell,'player','graveyard')});
+  setResolvingSpell(undefined);
+ };
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
   <header className="flex items-center justify-between py-2"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
 
@@ -65,6 +81,18 @@ export function GameClient() {
    </div>
 
    <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3">
+     <SpellResolver
+      spell={resolvingSpell}
+      opponentName={ai.name}
+      opponentLife={ai.life}
+      opponentCards={ai.battlefield}
+      onDamageOpponent={amount=>dispatch({type:'LIFE',playerId:ai.id,delta:-amount})}
+      onDamageCard={damageOpponentCard}
+      onDestroyCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'})}
+      onExileCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'exile'})}
+      onFinish={finishSpell}
+      onCancel={()=>setResolvingSpell(undefined)}
+     />
      {game.pendingAIAction&&<AIActionPanel action={game.pendingAIAction} onResolve={()=>dispatch({type:'RESOLVE_AI_ACTION'})} onCounter={()=>dispatch({type:'COUNTER_AI_ACTION'})}/>} 
      <div className="shrink-0">
       <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onResolveBlocks={resolveBlocks} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
