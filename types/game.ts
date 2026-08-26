@@ -29,6 +29,19 @@ export interface PendingCombat {
   source: 'player' | 'ai';
 }
 
+export interface PendingAIAction {
+  aiId: string;
+  kind: 'creature' | 'ramp' | 'draw' | 'removal';
+  cardName: string;
+  manaCost: number;
+  power?: number;
+  toughness?: number;
+  flying?: boolean;
+  amount?: number;
+  targetInstanceId?: string;
+  targetName?: string;
+}
+
 export interface GameSettings {
   aiOpponents: 1 | 2 | 3;
   startingLife: number;
@@ -48,6 +61,7 @@ export interface GameState {
   spellsCastThisTurn: number;
   log: LogEntry[];
   pendingCombat?: PendingCombat;
+  pendingAIAction?: PendingAIAction;
   startedAt: string;
   updatedAt: string;
 }
