@@ -9,6 +9,7 @@ import { reduceGame, type BlockAssignment, type GameAction } from '@/lib/game/re
 import { Battlefield } from './Battlefield';
 import { PlayerHeader } from './PlayerHeader';
 import { CardActionSheet } from './CardActionSheet';
+import { CardDetailModal } from './CardDetailModal';
 import { CardSearch } from './CardSearch';
 import { TokenCreator } from './TokenCreator';
 import { ManualCardCreator } from './ManualCardCreator';
@@ -23,15 +24,15 @@ const fallbackSettings = { aiOpponents: 1 as const, startingLife: 20, difficulty
 export function GameClient() {
  const router=useRouter();
  const [game,setGame]=useState<GameState|null>(null); const [past,setPast]=useState<GameState[]>([]); const [future,setFuture]=useState<GameState[]>([]);
- const [selected,setSelected]=useState<CardInstance>(); const [searchOpen,setSearchOpen]=useState(false); const [tokenOpen,setTokenOpen]=useState(false); const [manualOpen,setManualOpen]=useState(false); const [attackMode,setAttackMode]=useState(false); const [attackers,setAttackers]=useState<string[]>([]); const [resolvingSpell,setResolvingSpell]=useState<CardDefinition>();
+ const [selected,setSelected]=useState<CardInstance>(); const [viewedOpponentCard,setViewedOpponentCard]=useState<CardInstance>(); const [searchOpen,setSearchOpen]=useState(false); const [tokenOpen,setTokenOpen]=useState(false); const [manualOpen,setManualOpen]=useState(false); const [attackMode,setAttackMode]=useState(false); const [attackers,setAttackers]=useState<string[]>([]); const [resolvingSpell,setResolvingSpell]=useState<CardDefinition>();
  useEffect(()=>{setGame(loadGame()??newGame(fallbackSettings))},[]);
  useEffect(()=>{if(game)saveGame(game)},[game]);
  const dispatch=(action:GameAction)=>{setGame(current=>{if(!current)return current;setPast(h=>[...h.slice(-39),current]);setFuture([]);return reduceGame(current,action)});};
  const undo=()=>{if(!game||past.length===0)return;const prev=past[past.length-1];setFuture(f=>[game,...f]);setPast(p=>p.slice(0,-1));setGame(prev)};
  const redo=()=>{if(!game||future.length===0)return;const next=future[0];setPast(p=>[...p,game]);setFuture(f=>f.slice(1));setGame(next)};
  const human=game?.players.find(p=>p.id==='player'); const ai=game?.players.find(p=>p.isAI);
- const eligible=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&!c.tapped&&!c.summoningSick)??[],[human]);
- const combatUnavailableIds=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&(c.tapped||c.summoningSick)).map(c=>c.instanceId)??[],[human]);
+ const eligible=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&!c.tapped&&!c.summoningSick&&!c.combatDisabled)??[],[human]);
+ const combatUnavailableIds=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&(c.tapped||c.summoningSick||c.combatDisabled)).map(c=>c.instanceId)??[],[human]);
  if(!game||!human||!ai)return <div className="flex min-h-screen items-center justify-center text-zinc-400">Loading game…</div>;
  const isPlayerTurn=game.activePlayerId==='player';
  const incomingAttackers=game.pendingCombat?.source==='ai' ? ai.battlefield.filter(card=>game.pendingCombat?.attackerInstanceIds.includes(card.instanceId)) : [];
@@ -43,21 +44,22 @@ export function GameClient() {
  const resolveBlocks=(assignments:BlockAssignment[])=>dispatch({type:'RESOLVE_BLOCKS',assignments});
  const damageOpponentCard=(card:CardInstance,amount:number)=>{const next=card.damageMarked+amount;dispatch({type:'UPDATE_CARD',playerId:ai.id,instanceId:card.instanceId,patch:{damageMarked:next},log:`${resolvingSpell?.name ?? 'Spell'} dealt ${amount} damage to ${card.name}.`});const stats=currentStats(card);if(stats&&next>=stats.toughness)dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'});};
  const finishSpell=()=>{if(!resolvingSpell)return;dispatch({type:'CAST_PLAYER_SPELL',card:createCardInstance(resolvingSpell,'player','graveyard')});setResolvingSpell(undefined);};
+ const counterPendingWithPlayerSpell=()=>{if(!game.pendingAIAction)return;dispatch({type:'COUNTER_AI_ACTION'});};
 
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
   <header className="flex items-center justify-between py-2"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
 
   <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)] xl:items-stretch xl:gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(400px,0.8fr)]">
    <div className="min-w-0 space-y-3">
-    <section className="rounded-2xl border border-white/10 bg-white/[.035] p-3"><PlayerHeader name={ai.name} life={ai.life} onLife={d=>dispatch({type:'LIFE',playerId:ai.id,delta:d})} meta={`${ai.handCount} hand · ${ai.graveyard.length} grave · ${ai.exile.length} exile`}/><Battlefield cards={ai.battlefield}/></section>
+    <section className="rounded-2xl border border-white/10 bg-white/[.035] p-3"><PlayerHeader name={ai.name} life={ai.life} onLife={d=>dispatch({type:'LIFE',playerId:ai.id,delta:d})} meta={`${ai.handCount} hand · ${ai.graveyard.length} grave · ${ai.exile.length} exile`}/><Battlefield cards={ai.battlefield} onCard={setViewedOpponentCard}/></section>
 
     <section className="rounded-2xl border border-white/10 bg-white/[.05] p-3 shadow-2xl"><PlayerHeader name="My Battlefield" life={human.life} onLife={d=>dispatch({type:'LIFE',playerId:'player',delta:d})} meta={`${human.graveyard.length} grave · ${human.exile.length} exile`}/><Battlefield cards={human.battlefield} onCard={cardTap} selectedIds={attackers} combatMode={attackMode} combatUnavailableIds={combatUnavailableIds}/>
-     {game.settings.tutorMode&&attackMode&&<p className="mb-3 rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">Select untapped creatures without summoning sickness. Creatures that cannot attack this turn are dimmed and unavailable.</p>}
+     {game.settings.tutorMode&&attackMode&&<p className="mb-3 rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">Select untapped creatures without summoning sickness that are allowed to attack. Disabled creatures are dimmed and unavailable.</p>}
      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Action onClick={()=>setSearchOpen(true)}>＋ PLAY CARD</Action><Action onClick={()=>setTokenOpen(true)}>＋ TOKEN</Action><Action onClick={()=>setManualOpen(true)}>＋ MANUAL</Action><Action onClick={()=>{if(!isPlayerTurn)return;setAttackMode(v=>!v);setAttackers([])}} disabled={!isPlayerTurn}>{attackMode?'CANCEL ATTACK':'⚔ COMBAT'}</Action></div>
      {attackMode&&<button disabled={!attackers.length||Boolean(game.pendingCombat)} onClick={()=>dispatch({type:'PLAYER_ATTACK',attackerIds:attackers,defenderId:ai.id})} className="mt-2 w-full rounded-xl bg-red-500 py-3 font-black disabled:opacity-40">ATTACK WITH {attackers.length || 0}</button>}
     </section>
 
-    {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">{game.pendingAIAction?'Opponent cast a spell. Resolve or counter it to continue.':game.pendingCombat?'Opponent is attacking. Resolve combat to continue.':'Opponent is taking their turn.'}</div>}
+    {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">{game.pendingAIAction?'Opponent cast a spell. Resolve it, counter it, or cast a response.':game.pendingCombat?'Opponent is attacking. Resolve combat to continue.':'Opponent is taking their turn.'}</div>}
     <QuickReference active={isPlayerTurn}/>
    </div>
 
@@ -71,12 +73,13 @@ export function GameClient() {
    </div></aside>
   </div>
 
-  <SpellResolver spell={resolvingSpell} opponentName={ai.name} opponentLife={ai.life} opponentCards={ai.battlefield} onDamageOpponent={amount=>dispatch({type:'LIFE',playerId:ai.id,delta:-amount})} onDamageCard={damageOpponentCard} onDestroyCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'})} onExileCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'exile'})} onFinish={finishSpell} onCancel={()=>setResolvingSpell(undefined)}/>
+  <SpellResolver spell={resolvingSpell} opponentName={ai.name} opponentLife={ai.life} opponentCards={ai.battlefield} pendingOpponentSpell={game.pendingAIAction?.cardName} onDamageOpponent={amount=>dispatch({type:'LIFE',playerId:ai.id,delta:-amount})} onDamageCard={damageOpponentCard} onDestroyCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'})} onExileCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'exile'})} onCounterOpponentSpell={counterPendingWithPlayerSpell} onFinish={finishSpell} onCancel={()=>setResolvingSpell(undefined)}/>
   <AIActionModal action={game.pendingAIAction} onResolve={definition=>dispatch({type:'RESOLVE_AI_ACTION',definition})} onCounter={()=>dispatch({type:'COUNTER_AI_ACTION'})}/>
   <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onResolveBlocks={resolveBlocks} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
 
   <CardSearch open={searchOpen} onClose={()=>setSearchOpen(false)} onChoose={addDefinition}/><TokenCreator open={tokenOpen} onClose={()=>setTokenOpen(false)} onAdd={addManual}/><ManualCardCreator open={manualOpen} onClose={()=>setManualOpen(false)} onAdd={addManual}/>
   <CardActionSheet card={selected} onClose={()=>setSelected(undefined)} onUpdate={(patch,log)=>{if(selected)dispatch({type:'UPDATE_CARD',playerId:'player',instanceId:selected.instanceId,patch,log});setSelected(undefined)}} onMove={zone=>{if(selected)dispatch({type:'MOVE_CARD',playerId:'player',instanceId:selected.instanceId,zone});setSelected(undefined)}}/>
+  <CardDetailModal card={viewedOpponentCard} onClose={()=>setViewedOpponentCard(undefined)}/>
  </main>;
 }
 
