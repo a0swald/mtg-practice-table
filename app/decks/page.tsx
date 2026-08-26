@@ -6,118 +6,33 @@ import type { CardDefinition } from '@/types/card';
 import type { SavedDeck } from '@/types/deck';
 import { deleteDeck, loadDecks, upsertDeck } from '@/lib/storage/deckStorage';
 
-function uid() {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-}
+type ParsedEntry={quantity:number;name:string};
+type FailedCard={quantity:number;originalName:string;replacementName:string;error:string};
 
-function parseDeckList(text: string): { quantity: number; name: string }[] {
-  const entries: { quantity: number; name: string }[] = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || /^(commander|deck|sideboard|maybeboard|companion)$/i.test(line)) continue;
-    const match = line.match(/^(\d+)\s+(.+?)(?:\s+\([A-Z0-9]+\)\s+\S+.*)?$/i);
-    if (!match) continue;
-    const quantity = Number.parseInt(match[1], 10);
-    const name = match[2].replace(/\s+\*F\*$/i, '').trim();
-    if (quantity > 0 && name) entries.push({ quantity, name });
-  }
-  return entries;
-}
+function uid(){return typeof crypto!=='undefined'&&'randomUUID' in crypto?crypto.randomUUID():`${Date.now()}-${Math.random()}`}
+function parseDeckList(text:string):ParsedEntry[]{const entries:ParsedEntry[]=[];for(const raw of text.split(/\r?\n/)){const line=raw.trim();if(!line||/^(commander|deck|sideboard|maybeboard|companion)$/i.test(line))continue;const match=line.match(/^(\d+)\s+(.+?)(?:\s+\([A-Z0-9]+\)\s+\S+.*)?$/i);if(!match)continue;const quantity=Number.parseInt(match[1],10),name=match[2].replace(/\s+\*F\*$/i,'').trim();if(quantity>0&&name)entries.push({quantity,name})}return entries}
+async function lookup(name:string):Promise<CardDefinition>{const response=await fetch(`/api/cards/named?name=${encodeURIComponent(name)}`);if(!response.ok)throw new Error(`Could not find ${name}`);return response.json() as Promise<CardDefinition>}
 
-async function lookup(name: string): Promise<CardDefinition> {
-  const response = await fetch(`/api/cards/named?name=${encodeURIComponent(name)}`);
-  if (!response.ok) throw new Error(`Could not find ${name}`);
-  return response.json() as Promise<CardDefinition>;
-}
+export default function DecksPage(){
+ const router=useRouter();
+ const [decks,setDecks]=useState<SavedDeck[]>([]),[name,setName]=useState(''),[commanderName,setCommanderName]=useState(''),[list,setList]=useState(''),[busy,setBusy]=useState(false),[status,setStatus]=useState('');
+ const [pendingCommander,setPendingCommander]=useState<CardDefinition>(),[pendingQuantities,setPendingQuantities]=useState<Map<string,number>>(),[resolved,setResolved]=useState<Map<string,CardDefinition>>(new Map()),[failed,setFailed]=useState<FailedCard[]>([]),[resolvingFailures,setResolvingFailures]=useState(false);
+ useEffect(()=>setDecks(loadDecks()),[]);
+ const parsedCount=useMemo(()=>parseDeckList(list).reduce((sum,entry)=>sum+entry.quantity,0),[list]);
 
-export default function DecksPage() {
-  const router = useRouter();
-  const [decks, setDecks] = useState<SavedDeck[]>([]);
-  const [name, setName] = useState('');
-  const [commanderName, setCommanderName] = useState('');
-  const [list, setList] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
+ function clearPending(){setPendingCommander(undefined);setPendingQuantities(undefined);setResolved(new Map());setFailed([])}
+ function saveResolvedDeck(commander:CardDefinition,quantities:Map<string,number>,definitions:Map<string,CardDefinition>){const cards:CardDefinition[]=[];quantities.forEach((quantity,cardName)=>{const definition=definitions.get(cardName);if(definition)for(let copy=0;copy<quantity;copy+=1)cards.push(definition)});if(cards.length!==99)throw new Error(`This import has ${cards.length} non-commander cards. Commander decks should normally have 99.`);const now=new Date().toISOString(),deck:SavedDeck={id:uid(),name:name.trim(),commander,cards,createdAt:now,updatedAt:now};upsertDeck(deck);setDecks(loadDecks());setName('');setCommanderName('');setList('');clearPending();setStatus(`${deck.name} imported: ${deck.commander.name} + 99 cards.`)}
 
-  useEffect(() => setDecks(loadDecks()), []);
-  const parsedCount = useMemo(() => parseDeckList(list).reduce((sum, entry) => sum + entry.quantity, 0), [list]);
+ async function importDeck(){const deckName=name.trim(),commanderText=commanderName.trim();if(!deckName||!commanderText){setStatus('Deck name and commander are required.');return}const parsed=parseDeckList(list);if(!parsed.length){setStatus('Paste a decklist with lines like “1 Sol Ring”.');return}clearPending();setBusy(true);setStatus('Looking up commander…');try{const commander=await lookup(commanderText),commanderType=commander.typeLine.toLowerCase();if(!commanderType.includes('legendary')||(!commanderType.includes('creature')&&!commander.oracleText?.toLowerCase().includes('can be your commander')))throw new Error(`${commander.name} is not recognized as a commander.`);const quantities=new Map<string,number>();parsed.forEach(entry=>quantities.set(entry.name,(quantities.get(entry.name)??0)+entry.quantity));const commanderKey=[...quantities.keys()].find(cardName=>cardName.toLowerCase()===commander.name.toLowerCase());if(commanderKey){const remaining=(quantities.get(commanderKey)??0)-1;if(remaining>0)quantities.set(commanderKey,remaining);else quantities.delete(commanderKey)}const definitions=new Map<string,CardDefinition>(),failures:FailedCard[]=[],unique=[...quantities.entries()];for(let index=0;index<unique.length;index+=1){const [cardName,quantity]=unique[index];setStatus(`Importing ${index+1}/${unique.length}: ${cardName}`);try{definitions.set(cardName,await lookup(cardName))}catch(error){failures.push({quantity,originalName:cardName,replacementName:cardName,error:error instanceof Error?error.message:'Card lookup failed.'})}await new Promise(resolve=>window.setTimeout(resolve,115))}if(failures.length){setPendingCommander(commander);setPendingQuantities(quantities);setResolved(definitions);setFailed(failures);setStatus(`${failures.length} card${failures.length===1?'':'s'} could not be resolved. Fix them below to continue.`);return}saveResolvedDeck(commander,quantities,definitions)}catch(error){setStatus(error instanceof Error?error.message:'Deck import failed.')}finally{setBusy(false)}}
 
-  async function importDeck() {
-    const deckName = name.trim();
-    const commanderText = commanderName.trim();
-    if (!deckName || !commanderText) { setStatus('Deck name and commander are required.'); return; }
-    const parsed = parseDeckList(list);
-    if (!parsed.length) { setStatus('Paste a decklist with lines like “1 Sol Ring”.'); return; }
+ async function resolveFailedCards(){if(!pendingCommander||!pendingQuantities)return;setResolvingFailures(true);const nextDefinitions=new Map(resolved),remaining:FailedCard[]=[];for(let index=0;index<failed.length;index+=1){const item=failed[index],replacement=item.replacementName.trim();if(!replacement){remaining.push({...item,error:'Enter a card name.'});continue}setStatus(`Resolving ${index+1}/${failed.length}: ${replacement}`);try{const definition=await lookup(replacement);nextDefinitions.set(item.originalName,definition)}catch(error){remaining.push({...item,error:error instanceof Error?error.message:'Card lookup failed.'})}await new Promise(resolve=>window.setTimeout(resolve,115))}setResolved(nextDefinitions);setFailed(remaining);setResolvingFailures(false);if(remaining.length){setStatus(`${remaining.length} card${remaining.length===1?'':'s'} still need attention.`);return}try{saveResolvedDeck(pendingCommander,pendingQuantities,nextDefinitions)}catch(error){setStatus(error instanceof Error?error.message:'Deck import failed.')}}
 
-    setBusy(true);
-    setStatus('Looking up commander…');
-    try {
-      const commander = await lookup(commanderText);
-      const commanderType = commander.typeLine.toLowerCase();
-      if (!commanderType.includes('legendary') || (!commanderType.includes('creature') && !commander.oracleText?.toLowerCase().includes('can be your commander'))) {
-        throw new Error(`${commander.name} is not recognized as a commander.`);
-      }
-
-      const quantities = new Map<string, number>();
-      parsed.forEach(entry => quantities.set(entry.name, (quantities.get(entry.name) ?? 0) + entry.quantity));
-      const commanderKey = [...quantities.keys()].find(cardName => cardName.toLowerCase() === commander.name.toLowerCase());
-      if (commanderKey) {
-        const remaining = (quantities.get(commanderKey) ?? 0) - 1;
-        if (remaining > 0) quantities.set(commanderKey, remaining); else quantities.delete(commanderKey);
-      }
-
-      const unique = [...quantities.entries()];
-      const definitions = new Map<string, CardDefinition>();
-      for (let index = 0; index < unique.length; index += 1) {
-        const [cardName] = unique[index];
-        setStatus(`Importing ${index + 1}/${unique.length}: ${cardName}`);
-        definitions.set(cardName, await lookup(cardName));
-        await new Promise(resolve => window.setTimeout(resolve, 115));
-      }
-
-      const cards: CardDefinition[] = [];
-      unique.forEach(([cardName, quantity]) => {
-        const definition = definitions.get(cardName);
-        if (definition) for (let copy = 0; copy < quantity; copy += 1) cards.push(definition);
-      });
-
-      if (cards.length !== 99) throw new Error(`This import has ${cards.length} non-commander cards. Commander decks should normally have 99.`);
-      const now = new Date().toISOString();
-      const deck: SavedDeck = { id: uid(), name: deckName, commander, cards, createdAt: now, updatedAt: now };
-      upsertDeck(deck);
-      const next = loadDecks();
-      setDecks(next);
-      setName(''); setCommanderName(''); setList('');
-      setStatus(`${deck.name} imported: ${deck.commander.name} + 99 cards.`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Deck import failed.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return <main className="mx-auto min-h-screen w-[94vw] max-w-4xl py-6 sm:w-[90vw]">
-    <header className="mb-5 flex items-center justify-between"><button onClick={()=>router.push('/')} className="rounded-xl bg-white/5 px-3 py-2 text-sm font-bold text-zinc-300">← Main Menu</button><div className="text-right"><div className="text-xs font-black uppercase tracking-[.2em] text-emerald-300">Deck Library</div><h1 className="text-2xl font-black">My Commander Decks</h1></div></header>
-
-    <div className="grid gap-5 lg:grid-cols-[1fr_.85fr]">
-      <section className="rounded-3xl border border-white/10 bg-white/[.04] p-4 sm:p-5">
-        <h2 className="text-lg font-black">Import a deck</h2>
-        <p className="mt-1 text-sm leading-6 text-zinc-400">Paste a ManaBox/Moxfield-style list. The importer resolves real card data through Scryfall and stores the deck locally on this device.</p>
-        <label className="mt-4 block text-xs font-black uppercase tracking-wider text-zinc-500">Deck name<input value={name} onChange={event=>setName(event.target.value)} placeholder="Jeskai Spells" className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm normal-case text-white outline-none focus:border-emerald-400"/></label>
-        <label className="mt-3 block text-xs font-black uppercase tracking-wider text-zinc-500">Commander<input value={commanderName} onChange={event=>setCommanderName(event.target.value)} placeholder="Shiko and Narset, Unified" className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm normal-case text-white outline-none focus:border-emerald-400"/></label>
-        <label className="mt-3 block text-xs font-black uppercase tracking-wider text-zinc-500">Decklist · {parsedCount} cards parsed<textarea value={list} onChange={event=>setList(event.target.value)} rows={14} placeholder={'1 Sol Ring\n1 Arcane Signet\n1 Guttersnipe\n...'} className="mt-1 w-full resize-y rounded-xl border border-white/10 bg-black/25 px-3 py-3 font-mono text-xs normal-case text-white outline-none focus:border-emerald-400"/></label>
-        {status && <div className="mt-3 rounded-xl bg-black/20 p-3 text-sm text-zinc-300">{status}</div>}
-        <button disabled={busy} onClick={importDeck} className="mt-4 w-full rounded-2xl bg-emerald-400 px-4 py-4 font-black text-zinc-950 disabled:opacity-40">{busy ? 'IMPORTING…' : 'IMPORT DECK'}</button>
-      </section>
-
-      <section className="space-y-3">
-        <div><div className="text-xs font-black uppercase tracking-[.16em] text-zinc-500">Saved locally</div><h2 className="text-xl font-black">{decks.length} deck{decks.length === 1 ? '' : 's'}</h2></div>
-        {decks.length === 0 && <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500">No imported decks yet.</div>}
-        {decks.map(deck => <article key={deck.id} className="rounded-2xl border border-white/10 bg-white/[.035] p-4">
-          <div className="flex gap-3">{deck.commander.imageUrl && <img src={deck.commander.imageUrl} alt={deck.commander.name} className="w-20 rounded-lg"/>}<div className="min-w-0 flex-1"><h3 className="truncate text-lg font-black">{deck.name}</h3><div className="mt-1 text-sm font-bold text-emerald-200">{deck.commander.name}</div><div className="mt-1 text-xs text-zinc-500">99-card library · {deck.commander.colorIdentity.join('/') || 'Colorless'}</div></div></div>
-          <button onClick={()=>{deleteDeck(deck.id);setDecks(loadDecks())}} className="mt-3 w-full rounded-xl border border-red-400/15 bg-red-400/[.05] py-2 text-xs font-black text-red-200">DELETE</button>
-        </article>)}
-      </section>
-    </div>
-  </main>;
+ return <main className="mx-auto min-h-screen w-[94vw] max-w-4xl py-6 sm:w-[90vw]">
+  <header className="mb-5 flex items-center justify-between"><button onClick={()=>router.push('/')} className="rounded-xl bg-white/5 px-3 py-2 text-sm font-bold text-zinc-300">← Main Menu</button><div className="text-right"><div className="text-xs font-black uppercase tracking-[.2em] text-emerald-300">Deck Library</div><h1 className="text-2xl font-black">My Commander Decks</h1></div></header>
+  <div className="grid gap-5 lg:grid-cols-[1fr_.85fr]">
+   <section className="rounded-3xl border border-white/10 bg-white/[.04] p-4 sm:p-5"><h2 className="text-lg font-black">Import a deck</h2><p className="mt-1 text-sm leading-6 text-zinc-400">Paste a ManaBox/Moxfield-style list. The importer resolves real card data through Scryfall and stores the deck locally on this device.</p><label className="mt-4 block text-xs font-black uppercase tracking-wider text-zinc-500">Deck name<input value={name} onChange={event=>setName(event.target.value)} placeholder="Jeskai Spells" className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm normal-case text-white outline-none focus:border-emerald-400"/></label><label className="mt-3 block text-xs font-black uppercase tracking-wider text-zinc-500">Commander<input value={commanderName} onChange={event=>setCommanderName(event.target.value)} placeholder="Shiko and Narset, Unified" className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm normal-case text-white outline-none focus:border-emerald-400"/></label><label className="mt-3 block text-xs font-black uppercase tracking-wider text-zinc-500">Decklist · {parsedCount} cards parsed<textarea value={list} onChange={event=>setList(event.target.value)} rows={14} placeholder={'1 Sol Ring\n1 Arcane Signet\n1 Guttersnipe\n...'} className="mt-1 w-full resize-y rounded-xl border border-white/10 bg-black/25 px-3 py-3 font-mono text-xs normal-case text-white outline-none focus:border-emerald-400"/></label>{status&&<div className="mt-3 rounded-xl bg-black/20 p-3 text-sm text-zinc-300">{status}</div>}<button disabled={busy} onClick={importDeck} className="mt-4 w-full rounded-2xl bg-emerald-400 px-4 py-4 font-black text-zinc-950 disabled:opacity-40">{busy?'IMPORTING…':'IMPORT DECK'}</button></section>
+   <section className="space-y-3"><div><div className="text-xs font-black uppercase tracking-[.16em] text-zinc-500">Saved locally</div><h2 className="text-xl font-black">{decks.length} deck{decks.length===1?'':'s'}</h2></div>{decks.length===0&&<div className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500">No imported decks yet.</div>}{decks.map(deck=><article key={deck.id} className="rounded-2xl border border-white/10 bg-white/[.035] p-4"><div className="flex gap-3">{deck.commander.imageUrl&&<img src={deck.commander.imageUrl} alt={deck.commander.name} className="w-20 rounded-lg"/>}<div className="min-w-0 flex-1"><h3 className="truncate text-lg font-black">{deck.name}</h3><div className="mt-1 text-sm font-bold text-emerald-200">{deck.commander.name}</div><div className="mt-1 text-xs text-zinc-500">99-card library · {deck.commander.colorIdentity.join('/')||'Colorless'}</div></div></div><button onClick={()=>{deleteDeck(deck.id);setDecks(loadDecks())}} className="mt-3 w-full rounded-xl border border-red-400/15 bg-red-400/[.05] py-2 text-xs font-black text-red-200">DELETE</button></article>)}</section>
+  </div>
+  {failed.length>0&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"><section className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-amber-400/25 bg-[#17191a] p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><div className="text-[10px] font-black uppercase tracking-[.2em] text-amber-300">Card Resolver</div><h2 className="mt-1 text-2xl font-black">{failed.length} card{failed.length===1?'':'s'} need attention</h2><p className="mt-2 text-sm leading-6 text-zinc-400">The rest of the deck resolved successfully. Correct the card name below and retry; you do not need to re-import the whole list.</p></div><button onClick={()=>{clearPending();setStatus('Import cancelled.')}} className="rounded-xl bg-white/5 px-3 py-2 font-black text-zinc-400">✕</button></div><div className="mt-5 space-y-3">{failed.map((item,index)=><div key={`${item.originalName}-${index}`} className="rounded-2xl border border-white/10 bg-black/20 p-4"><div className="flex items-center justify-between gap-3"><div className="text-xs font-black uppercase tracking-wider text-zinc-500">Failed parse</div><div className="rounded-lg bg-white/5 px-2 py-1 text-xs font-bold text-zinc-400">Qty {item.quantity}</div></div><div className="mt-2 text-sm text-red-200">Could not find <b>{item.originalName}</b></div><label className="mt-3 block text-xs font-black uppercase tracking-wider text-zinc-500">Resolve as<input autoFocus={index===0} value={item.replacementName} onChange={event=>setFailed(current=>current.map((entry,i)=>i===index?{...entry,replacementName:event.target.value}:entry))} onKeyDown={event=>{if(event.key==='Enter'&&!resolvingFailures)void resolveFailedCards()}} className="mt-1 w-full rounded-xl border border-amber-400/20 bg-black/30 px-3 py-3 text-sm normal-case text-white outline-none focus:border-amber-300"/></label>{item.error&&<div className="mt-2 text-xs text-zinc-500">{item.error}</div>}</div>)}</div><div className="mt-5 flex gap-2"><button onClick={()=>{clearPending();setStatus('Import cancelled.')}} className="flex-1 rounded-2xl border border-white/10 px-4 py-3 text-sm font-black text-zinc-300">CANCEL</button><button disabled={resolvingFailures} onClick={resolveFailedCards} className="flex-[1.5] rounded-2xl bg-amber-300 px-4 py-3 text-sm font-black text-zinc-950 disabled:opacity-40">{resolvingFailures?'CHECKING…':'RESOLVE & CONTINUE'}</button></div></section></div>}
+ </main>
 }
