@@ -4,6 +4,7 @@ Mobile-first Magic: The Gathering Commander practice app with two play styles:
 
 - **Physical Companion** — play your real deck on the table while the app mirrors the battlefield, tracks state, and runs an AI opponent.
 - **Virtual Game** — import a Commander deck, shuffle/draw the real 99-card library digitally, and play directly from a visible virtual hand.
+- **Table Utility** — iPhone/iPad life counter with per-player orientation, backgrounds, counters, commander damage, and optional Shared Table syncing.
 
 It is intentionally **not** a full Comprehensive Rules engine. The app automates safe/common state changes and lets the player confirm unusual Oracle interactions.
 
@@ -31,21 +32,42 @@ It is intentionally **not** a full Comprehensive Rules engine. The app automates
 - Undo/redo and automatic localStorage save/restore
 - Victory/defeat overlays and quit-to-menu flow
 - Mobile-first card rows, bottom sheets, and centered resolution modals
+- Shared Table 4-digit rooms using Socket.IO so separate phones can control and sync their own utility player live
 
 ## Run locally
 
 ```bash
 npm install
-npm run dev -- -p 3100
+npm run dev
 ```
 
-Open http://localhost:3100.
+The custom Next.js + Socket.IO server listens on port `3100` by default and binds to `0.0.0.0`, so other devices on your LAN can connect using the computer/server's local IP address, for example `http://192.168.1.50:3100`.
+
+To use another port:
+
+```bash
+PORT=3200 npm run dev
+```
 
 Production check:
 
 ```bash
 npm run build
+npm start
 ```
+
+## Shared Table
+
+Open **Table Utility**, start a counter, then open the Table Menu.
+
+- One player chooses **HOST TABLE** and receives a 4-digit table code.
+- Other players choose **JOIN TABLE**, enter that code and their name, and join the room.
+- While connected, each device shows its own player as a full-screen utility counter.
+- The Shared Table roster shows every player, life total, host status, and connection status.
+- Life, counters, name, color, orientation, and card-art background changes synchronize live.
+- Rooms are stored in server memory for the MVP; no database or account is required.
+
+Socket.IO runs on the same HTTP server as Next.js. This keeps the app suitable for a future Docker/Umbrel deployment behind a normal reverse proxy or DuckDNS address without depending on a hosted realtime provider.
 
 ## Importing a Commander deck
 
@@ -73,7 +95,9 @@ Client calls go through `/api/cards/autocomplete` and `/api/cards/named`. The se
 - `lib/ai/`: commander-based deck construction and turn behavior
 - `lib/storage/`: local game/deck persistence
 - `lib/scryfall/`: Scryfall normalization
-- `components/`: battlefield, commander, hand, combat, response, and modal UI
+- `lib/shared-table/`: Socket.IO client synchronization for utility rooms
+- `components/`: battlefield, commander, hand, combat, response, modal, and Shared Table UI
+- `server.mjs`: custom Next.js HTTP server plus in-memory Socket.IO room service
 - `app/decks/`: local deck import/management
 - `app/api/cards/`: Scryfall proxy routes
 
