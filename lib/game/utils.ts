@@ -1,6 +1,6 @@
 import type { CardDefinition, CardInstance } from '@/types/card';
 import type { GameSettings, GameState, PlayerState } from '@/types/game';
-import { buildRandomAIDeck } from '@/lib/ai/deck';
+import { buildCommanderAIDeck } from '@/lib/ai/deck';
 
 export const uid = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
@@ -30,15 +30,19 @@ export function currentStats(card:CardInstance){if(card.basePower===undefined||c
 
 function player(id:string,name:string,life:number,isAI:boolean):PlayerState{
   if(!isAI)return{id,name,isAI,life,handCount:0,libraryCount:undefined,graveyard:[],exile:[],battlefield:[],commanderTax:0,commanderDamage:{},availableMana:0};
-  const deck=buildRandomAIDeck();
-  const hand=deck.slice(0,7);
-  const library=deck.slice(7);
-  return{id,name,isAI,life,handCount:hand.length,libraryCount:library.length,graveyard:[],exile:[],battlefield:[],commanderTax:0,commanderDamage:{},availableMana:0,aiLibrary:library,aiHand:hand,aiLandsPlayed:0};
+  const built=buildCommanderAIDeck();
+  const hand=built.deck.slice(0,7);
+  const library=built.deck.slice(7);
+  const definition:CardDefinition={id:`ai-commander-${built.commander.id}`,name:built.commander.name,typeLine:built.commander.typeLine,oracleText:built.commander.oracleText,colors:built.commander.colorIdentity,colorIdentity:built.commander.colorIdentity,power:String(built.commander.power),toughness:String(built.commander.toughness)};
+  const commander=createCardInstance(definition,id,'command');
+  commander.isCommander=true;
+  return{id,name,isAI,life,handCount:hand.length,libraryCount:library.length,graveyard:[],exile:[],battlefield:[],commander,commanderTax:0,commanderDamage:{},availableMana:0,aiLibrary:library,aiHand:hand,aiLandsPlayed:0};
 }
 
 export function newGame(settings:GameSettings):GameState{
   const human=player('player','You',settings.startingLife,false);
   const opponents=Array.from({length:settings.aiOpponents},(_,i)=>player(`ai-${i+1}`,settings.aiOpponents===1?'Opponent':`Opponent ${i+1}`,settings.startingLife,true));
   const now=new Date().toISOString();
-  return{id:uid(),settings,players:[human,...opponents],turnNumber:1,activePlayerId:'player',phase:'Main 1',spellsCastThisTurn:0,log:[{id:uid(),turn:1,actor:'Game',message:'Game started. Opponent shuffled a fresh 100-card deck and drew 7.'}],startedAt:now,updatedAt:now};
+  const aiCommander=opponents[0]?.commander?.name;
+  return{id:uid(),settings,players:[human,...opponents],turnNumber:1,activePlayerId:'player',phase:'Main 1',spellsCastThisTurn:0,log:[{id:uid(),turn:1,actor:'Game',message:`Game started. Opponent chose ${aiCommander ?? 'a commander'}, shuffled a fresh 99-card library, and drew 7.`}],startedAt:now,updatedAt:now};
 }
