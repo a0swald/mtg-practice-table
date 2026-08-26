@@ -56,12 +56,12 @@ export default function SharedTableHud() {
 
   const rotation = rotationFor(you);
   const position = rotation === 0
-    ? 'top-[max(env(safe-area-inset-top),.75rem)] left-1/2 -translate-x-1/2'
-    : rotation === 180
-      ? 'bottom-[max(env(safe-area-inset-bottom),.75rem)] left-1/2 -translate-x-1/2'
-      : rotation === 90
-        ? 'left-[max(env(safe-area-inset-left),.75rem)] top-1/2 -translate-y-1/2'
-        : 'right-[max(env(safe-area-inset-right),.75rem)] top-1/2 -translate-y-1/2';
+    ? 'left-[max(env(safe-area-inset-left),.75rem)] top-[max(env(safe-area-inset-top),.75rem)] origin-top-left'
+    : rotation === 90
+      ? 'right-[max(env(safe-area-inset-right),.75rem)] top-[max(env(safe-area-inset-top),.75rem)] origin-top-right'
+      : rotation === 180
+        ? 'right-[max(env(safe-area-inset-right),.75rem)] bottom-[max(env(safe-area-inset-bottom),.75rem)] origin-bottom-right'
+        : 'left-[max(env(safe-area-inset-left),.75rem)] bottom-[max(env(safe-area-inset-bottom),.75rem)] origin-bottom-left';
 
   return (
     <div className={`pointer-events-none fixed z-30 ${position}`}>
