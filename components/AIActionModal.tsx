@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDefinition } from '@/types/card';
 import type { PendingAIAction } from '@/types/game';
+import { parseSimpleOracleEffects } from '@/lib/game/oracleEffects';
 
 export function AIActionModal({
   action,
@@ -38,14 +39,33 @@ export function AIActionModal({
   const oracleText = definition?.oracleText ?? action.oracleText;
   const typeLine = definition?.typeLine ?? action.typeLine;
   const imageUrl = definition?.imageUrl;
+  const effects = parseSimpleOracleEffects(oracleText);
 
-  const result = action.kind === 'creature'
-    ? `If it resolves, ${action.cardName} enters the opponent's battlefield${action.power !== undefined ? ` as a ${action.power}/${action.toughness}` : ''}. It will have summoning sickness this turn.`
-    : action.kind === 'removal'
-      ? `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed and moved to your graveyard.`
-      : action.kind === 'draw'
-        ? `If it resolves, the opponent draws ${action.amount ?? 2} cards.`
-        : `If it resolves, ${action.cardName} enters the battlefield and can provide additional mana on future turns.`;
+  let result: string;
+  if (action.kind === 'creature') {
+    result = `If it resolves, ${action.cardName} enters the opponent's battlefield${action.power !== undefined ? ` as a ${action.power}/${action.toughness}` : ''}. It will have summoning sickness this turn.`;
+    if (effects.entersDrawCards > 0) result += ` Its enter-the-battlefield ability then draws ${effects.entersDrawCards} card${effects.entersDrawCards === 1 ? '' : 's'}.`;
+  } else if (action.kind === 'draw') {
+    result = `If it resolves, the opponent draws ${effects.drawCards || action.amount || 0} cards.`;
+    if (effects.loseLife > 0) result += ` The opponent also loses ${effects.loseLife} life.`;
+    if (effects.gainLife > 0) result += ` The opponent also gains ${effects.gainLife} life.`;
+  } else if (action.kind === 'removal') {
+    if (effects.disablesAttackAndBlock) {
+      result = `If it resolves, ${action.cardName} enchants ${action.targetName ?? 'the targeted creature'}. That creature stays on the battlefield but can't attack or block.`;
+    } else if (effects.destroysArtifactOrEnchantment) {
+      result = `If it resolves, ${action.targetName ?? 'the target'} is destroyed only if it is an artifact or enchantment.`;
+    } else if (effects.destroysNonartifactCreature) {
+      result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed only if it is a nonartifact creature.`;
+    } else if (effects.destroysNonblackCreature) {
+      result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed only if it is nonblack.`;
+    } else if (effects.destroysCreature) {
+      result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed and moved to its owner's graveyard.`;
+    } else {
+      result = `If it resolves, the app will apply only the Oracle effect it safely understands. It will not incorrectly destroy the target.`;
+    }
+  } else {
+    result = `If it resolves, ${action.cardName} enters the battlefield and can provide mana according to its Oracle text.`;
+  }
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true">
@@ -63,7 +83,7 @@ export function AIActionModal({
 
         {action.kind === 'removal' && (
           <div className="mt-4 rounded-xl border border-red-400/25 bg-red-400/[.06] p-3 text-sm text-red-100">
-            <span className="font-black">Target:</span> {action.targetName ?? 'your creature'}
+            <span className="font-black">Target:</span> {action.targetName ?? 'your permanent'}
           </div>
         )}
 
