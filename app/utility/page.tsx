@@ -25,6 +25,7 @@ type Facing = 'auto' | 0 | 90 | 180 | 270;
 type BackgroundMode = 'preset' | 'card' | 'custom';
 type LifeFeedback = 'minus' | 'plus' | null;
 type CardLookup = { name: string; imageUrl?: string };
+type SharedTableController = ReturnType<typeof useSharedUtilityTable>;
 
 type UtilityPlayer = {
   id: string;
@@ -139,7 +140,7 @@ export default function UtilityPage() {
     });
   }
 
-  function quit() { localStorage.removeItem(STORAGE_KEY); router.push('/'); }
+  function quit() { shared.leave(); localStorage.removeItem(STORAGE_KEY); router.push('/'); }
   function reset() { if (state) setState(freshState(state.players.length, state.startingLife)); setMenuOpen(false); }
 
   function nextTurn() {
@@ -181,7 +182,7 @@ export default function UtilityPage() {
     <main className="relative h-[100dvh] w-screen overflow-hidden bg-black text-white [touch-action:none] [user-select:none]">
       <section className={layoutClass(count)}>
         {displayPlayers.map((player, index) => (
-          <PlayerZone key={player.id} player={player} index={index} count={count} players={state.players} defeated={defeated.has(player.id)} active={state.activePlayerId === player.id} monarch={state.monarchId === player.id} initiative={state.initiativeId === player.id} onLife={delta => life(player.id, delta)} onPatch={fn => patchPlayer(player.id, fn)} onCounter={(key, delta) => counter(player.id, key, delta)} onCommanderDamage={(sourceId, delta) => commanderDamage(player.id, sourceId, delta)} onMonarch={() => setState(current => current ? { ...current, monarchId: current.monarchId === player.id ? undefined : player.id } : current)} onInitiative={() => setState(current => current ? { ...current, initiativeId: current.initiativeId === player.id ? undefined : player.id } : current)} />
+          <PlayerZone key={player.id} player={player} index={index} count={count} players={state.players} shared={shared} defeated={defeated.has(player.id)} active={state.activePlayerId === player.id} monarch={state.monarchId === player.id} initiative={state.initiativeId === player.id} onLife={delta => life(player.id, delta)} onPatch={fn => patchPlayer(player.id, fn)} onCounter={(key, delta) => counter(player.id, key, delta)} onCommanderDamage={(sourceId, delta) => commanderDamage(player.id, sourceId, delta)} onMonarch={() => setState(current => current ? { ...current, monarchId: current.monarchId === player.id ? undefined : player.id } : current)} onInitiative={() => setState(current => current ? { ...current, initiativeId: current.initiativeId === player.id ? undefined : player.id } : current)} />
         ))}
       </section>
 
@@ -193,7 +194,6 @@ export default function UtilityPage() {
             <div className="flex items-center justify-between gap-4"><div><div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Table Menu</div><div className="mt-1 text-xl font-black">Turn {state.turn} · {formatTime(state.seconds)}</div></div><button aria-label="Close table menu" onClick={() => setMenuOpen(false)} className="grid h-12 w-12 place-items-center rounded-xl bg-white/5"><X size={24} /></button></div>
             <div className="mt-4 grid grid-cols-2 gap-2"><MenuAction icon={<Timer size={24} />} label={state.running ? 'PAUSE TIMER' : 'START TIMER'} onClick={() => setState(current => current ? { ...current, running: !current.running } : current)} /><MenuAction label="NEXT TURN" accent onClick={nextTurn} /><MenuAction icon={<Dices size={24} />} label="ROLL D20" onClick={() => setDiceResult(`D20: ${1 + Math.floor(Math.random() * 20)}`)} /><MenuAction icon={<Coins size={24} />} label="FLIP COIN" onClick={() => setDiceResult(Math.random() < .5 ? 'HEADS' : 'TAILS')} /></div>
             {diceResult && <div className="mt-3 rounded-2xl bg-black/25 p-4 text-center text-3xl font-black">{diceResult}</div>}
-            <SharedTableSection session={shared.session} roster={shared.roster} busy={shared.busy} error={shared.error} onHost={shared.host} onJoin={shared.join} onLeave={shared.leave} onClearError={shared.clearError} />
             <div className="mt-4 grid grid-cols-2 gap-2"><MenuAction icon={<RotateCcw size={20} />} label="RESET" onClick={reset} outlined /><MenuAction icon={<LogOut size={20} />} label="QUIT" onClick={quit} danger outlined /></div>
           </section>
         </div>
@@ -211,8 +211,8 @@ function MenuAction({ icon, label, onClick, accent, danger, outlined }: { icon?:
   return <button onClick={onClick} className={`flex min-h-14 items-center justify-center gap-2 rounded-2xl px-3 text-sm font-black ${accent ? 'bg-cyan-300 text-zinc-950' : danger ? 'border border-red-400/30 bg-red-400/[.05] text-red-200' : outlined ? 'border border-white/10 bg-transparent' : 'bg-white/10'}`}>{icon}{label}</button>;
 }
 
-function PlayerZone({ player, index, count, players, defeated, active, monarch, initiative, onLife, onPatch, onCounter, onCommanderDamage, onMonarch, onInitiative }: {
-  player: UtilityPlayer; index: number; count: number; players: UtilityPlayer[]; defeated: boolean; active: boolean; monarch: boolean; initiative: boolean;
+function PlayerZone({ player, index, count, players, shared, defeated, active, monarch, initiative, onLife, onPatch, onCounter, onCommanderDamage, onMonarch, onInitiative }: {
+  player: UtilityPlayer; index: number; count: number; players: UtilityPlayer[]; shared: SharedTableController; defeated: boolean; active: boolean; monarch: boolean; initiative: boolean;
   onLife: (delta: number) => void; onPatch: (fn: (player: UtilityPlayer) => UtilityPlayer) => void; onCounter: (key: CounterKey, delta: number) => void; onCommanderDamage: (sourceId: string, delta: number) => void; onMonarch: () => void; onInitiative: () => void;
 }) {
   const rotation = logicalRotation(player, index, count);
@@ -277,7 +277,7 @@ function PlayerZone({ player, index, count, players, defeated, active, monarch, 
   return (
     <article style={{ background: `linear-gradient(145deg,${player.color}55,#090b0d)` }} className={`relative overflow-hidden ${active ? 'ring-4 ring-inset ring-white/80' : ''} ${defeated ? 'brightness-50' : ''}`}>
       <div className="absolute inset-0">
-        <div style={{ opacity: reveal, pointerEvents: reveal > .9 ? 'auto' : 'none' }} className="absolute inset-0 z-10 transition-opacity"><PlayerSettings key={settingsSession} player={player} players={players} rotation={rotation} monarch={monarch} initiative={initiative} onPatch={onPatch} onCounter={onCounter} onCommanderDamage={onCommanderDamage} onMonarch={onMonarch} onInitiative={onInitiative} /></div>
+        <div style={{ opacity: reveal, pointerEvents: reveal > .9 ? 'auto' : 'none' }} className="absolute inset-0 z-10 transition-opacity"><PlayerSettings key={settingsSession} player={player} players={players} shared={shared} rotation={rotation} monarch={monarch} initiative={initiative} onPatch={onPatch} onCounter={onCounter} onCommanderDamage={onCommanderDamage} onMonarch={onMonarch} onInitiative={onInitiative} /></div>
 
         <div onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { setGesture(undefined); setDrag(0); }} style={{ transform: `translate(${tx}%,${ty}%)`, backgroundImage: cardBackground, backgroundSize: 'cover', backgroundPosition: 'center' }} className="absolute inset-0 z-20 overflow-hidden shadow-2xl transition-transform duration-200 data-[drag=true]:transition-none" data-drag={gesture !== undefined}>
           <div style={{ transform: `rotate(${rotation}deg)` }} className="pointer-events-none absolute inset-0 transition-transform duration-200">
@@ -298,8 +298,8 @@ function DrawerHandle({ rotation, open, onClick }: { rotation: number; open: boo
   return <button data-drawer-handle aria-label={open ? 'Close player settings' : 'Open player settings'} onClick={event => { event.stopPropagation(); onClick(); }} className={`absolute z-30 flex h-20 w-20 justify-center ${position}`}><span className={`${bar} rounded-full bg-white/85 shadow`} /></button>;
 }
 
-function PlayerSettings({ player, players, rotation, monarch, initiative, onPatch, onCounter, onCommanderDamage, onMonarch, onInitiative }: {
-  player: UtilityPlayer; players: UtilityPlayer[]; rotation: number; monarch: boolean; initiative: boolean;
+function PlayerSettings({ player, players, shared, rotation, monarch, initiative, onPatch, onCounter, onCommanderDamage, onMonarch, onInitiative }: {
+  player: UtilityPlayer; players: UtilityPlayer[]; shared: SharedTableController; rotation: number; monarch: boolean; initiative: boolean;
   onPatch: (fn: (player: UtilityPlayer) => UtilityPlayer) => void; onCounter: (key: CounterKey, delta: number) => void; onCommanderDamage: (sourceId: string, delta: number) => void; onMonarch: () => void; onInitiative: () => void;
 }) {
   const [panel, setPanel] = useState<'home' | 'background' | 'name'>('home');
@@ -367,6 +367,7 @@ function PlayerSettings({ player, players, rotation, monarch, initiative, onPatc
             <SettingsStripSection title="Player" className="min-w-[calc(100%-2rem)] sm:min-w-[calc(100%-3rem)]"><Dashboard player={player} onBackground={() => setPanel('background')} onKill={() => onPatch(current => ({ ...current, life: 0 }))} onName={() => setPanel('name')} onTax={delta => onCounter('commanderTax', delta)} onPoison={delta => onCounter('poison', delta)} /></SettingsStripSection>
             <SettingsStripSection title="Counters" className="min-w-[calc(100%-2rem)] sm:min-w-[calc(100%-3rem)]"><div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4"><TinyCounter label="Poison" value={player.poison} onMinus={() => onCounter('poison', -1)} onPlus={() => onCounter('poison', 1)} /><TinyCounter label="Energy" value={player.energy} onMinus={() => onCounter('energy', -1)} onPlus={() => onCounter('energy', 1)} /><TinyCounter label="Experience" value={player.experience} onMinus={() => onCounter('experience', -1)} onPlus={() => onCounter('experience', 1)} /><TinyCounter label="Storm" value={player.storm} onMinus={() => onCounter('storm', -1)} onPlus={() => onCounter('storm', 1)} /></div><div className="mt-4 grid w-full grid-cols-2 gap-2"><button onClick={onMonarch} className={`rounded-2xl py-3 text-xs font-black ${monarch ? 'bg-amber-300 text-zinc-950' : 'bg-white/10'}`}><span className="inline-flex items-center gap-2"><Crown size={17} />MONARCH</span></button><button onClick={onInitiative} className={`rounded-2xl py-3 text-xs font-black ${initiative ? 'bg-violet-300 text-zinc-950' : 'bg-white/10'}`}><span className="inline-flex items-center gap-2"><Zap size={17} />INITIATIVE</span></button></div></SettingsStripSection>
             <SettingsStripSection title="Commander Damage" className="min-w-[calc(100%-2rem)] sm:min-w-[calc(100%-3rem)]">{players.length > 1 ? <div className="w-full space-y-2">{players.filter(source => source.id !== player.id).map(source => <div key={source.id} className="grid grid-cols-[1fr_44px_52px_44px] items-center gap-2 rounded-2xl bg-black/20 p-3"><span className="truncate text-xs font-bold">{source.name}</span><button onClick={() => onCommanderDamage(source.id, -1)} className="h-11 rounded-xl bg-white/10 font-black">−</button><span className="text-center text-lg font-black">{player.commanderDamage[source.id] ?? 0}</span><button onClick={() => onCommanderDamage(source.id, 1)} className="h-11 rounded-xl bg-red-400/15 font-black text-red-200">+</button></div>)}</div> : <div className="rounded-2xl bg-black/15 p-4 text-sm text-zinc-400">Commander damage appears here in multiplayer.</div>}</SettingsStripSection>
+            <SettingsStripSection title="Shared Table" className="min-w-[calc(100%-2rem)] sm:min-w-[calc(100%-3rem)]"><div className="w-full max-w-lg overflow-y-auto"><SharedTableSection session={shared.session} roster={shared.roster} busy={shared.busy} error={shared.error} onHost={shared.host} onJoin={shared.join} onLeave={shared.leave} onClearError={shared.clearError} /></div></SettingsStripSection>
           </div>
         </div>
       </div>
