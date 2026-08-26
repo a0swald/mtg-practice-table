@@ -1,4 +1,5 @@
 'use client';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CardDefinition, CardInstance } from '@/types/card';
@@ -19,82 +20,167 @@ import { CombatPanel } from './CombatPanel';
 import { TurnControls } from './TurnControls';
 import { SpellResolver } from './SpellResolver';
 import { AIActionModal } from './AIActionModal';
+import { VirtualHand, VirtualResponsePicker } from './VirtualHand';
 
-const fallbackSettings = { aiOpponents: 1 as const, startingLife: 20, difficulty: 'learning' as const, commanderDamageEnabled: true, tutorMode: true, simplifiedTurns: true };
+const fallbackSettings = { aiOpponents:1 as const, startingLife:20, difficulty:'learning' as const, commanderDamageEnabled:true, tutorMode:true, simplifiedTurns:true, mode:'physical' as const };
 
 export function GameClient() {
- const router=useRouter();
- const [game,setGame]=useState<GameState|null>(null); const [past,setPast]=useState<GameState[]>([]); const [future,setFuture]=useState<GameState[]>([]);
- const [selected,setSelected]=useState<CardInstance>(); const [viewedOpponentCard,setViewedOpponentCard]=useState<CardInstance>(); const [searchOpen,setSearchOpen]=useState(false); const [commanderSearchOpen,setCommanderSearchOpen]=useState(false); const [responseSearchOpen,setResponseSearchOpen]=useState(false); const [tokenOpen,setTokenOpen]=useState(false); const [manualOpen,setManualOpen]=useState(false); const [attackMode,setAttackMode]=useState(false); const [attackers,setAttackers]=useState<string[]>([]); const [resolvingSpell,setResolvingSpell]=useState<CardDefinition>();
- useEffect(()=>{setGame(loadGame()??newGame(fallbackSettings))},[]);
- useEffect(()=>{if(game)saveGame(game)},[game]);
- const dispatch=(action:GameAction)=>{setGame(current=>{if(!current)return current;setPast(h=>[...h.slice(-39),current]);setFuture([]);return reduceGame(current,action)});};
- const mutateGame=(mutator:(next:GameState)=>void)=>setGame(current=>{if(!current)return current;setPast(h=>[...h.slice(-39),current]);setFuture([]);const next=structuredClone(current);mutator(next);next.updatedAt=new Date().toISOString();return next;});
- const undo=()=>{if(!game||past.length===0)return;const prev=past[past.length-1];setFuture(f=>[game,...f]);setPast(p=>p.slice(0,-1));setGame(prev)};
- const redo=()=>{if(!game||future.length===0)return;const next=future[0];setPast(p=>[...p,game]);setFuture(f=>f.slice(1));setGame(next)};
- const quitGame=()=>{clearGame();router.replace('/')};
- const human=game?.players.find(p=>p.id==='player'); const ai=game?.players.find(p=>p.isAI);
- const eligible=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&!c.tapped&&!c.summoningSick&&!c.combatDisabled)??[],[human]);
- const combatUnavailableIds=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&(c.tapped||c.summoningSick||c.combatDisabled)).map(c=>c.instanceId)??[],[human]);
- if(!game||!human||!ai)return <div className="flex min-h-screen items-center justify-center text-zinc-400">Loading game…</div>;
- const isPlayerTurn=game.activePlayerId==='player';
- const incomingAttackers=game.pendingCombat?.source==='ai' ? ai.battlefield.filter(card=>game.pendingCombat?.attackerInstanceIds.includes(card.instanceId)) : [];
- const cardTap=(card:CardInstance)=>{if(attackMode){if(eligible.some(c=>c.instanceId===card.instanceId)){setAttackers(a=>a.includes(card.instanceId)?a.filter(id=>id!==card.instanceId):[...a,card.instanceId]);}return;}setSelected(card)};
- const addDefinition=(definition:CardDefinition)=>{const type=definition.typeLine.toLowerCase();if(type.includes('instant')||type.includes('sorcery')){setResolvingSpell(definition);return;}dispatch({type:'ADD_CARD',playerId:'player',card:createCardInstance(definition,'player','battlefield')});};
- const addResponseDefinition=(definition:CardDefinition)=>{const type=definition.typeLine.toLowerCase();if(type.includes('instant')||type.includes('sorcery'))setResolvingSpell(definition);else dispatch({type:'LOG',actor:'Tutor',message:`${definition.name} is not an instant or sorcery response.`});};
- const addCommander=(definition:CardDefinition)=>{const valid=definition.typeLine.toLowerCase().includes('legendary')&&(definition.typeLine.toLowerCase().includes('creature')||definition.oracleText?.toLowerCase().includes('can be your commander'));if(!valid){dispatch({type:'LOG',actor:'Tutor',message:`${definition.name} is not recognized as a legal commander.`});return;}mutateGame(next=>{const player=next.players.find(p=>p.id==='player');if(!player)return;const commander=createCardInstance(definition,'player','command');commander.isCommander=true;player.commander=commander;player.commanderTax=0;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Selected ${definition.name} as commander.`});});};
- const castCommander=()=>mutateGame(next=>{const player=next.players.find(p=>p.id==='player');if(!player?.commander||player.commander.zone!=='command')return;const card=structuredClone(player.commander);card.zone='battlefield';card.tapped=false;card.summoningSick=true;card.isCommander=true;player.commander={...card};player.battlefield.push(card);next.spellsCastThisTurn+=1;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Cast commander ${card.name} with +${player.commanderTax} commander tax.`});});
- const returnCommander=()=>mutateGame(next=>{const player=next.players.find(p=>p.id==='player');if(!player?.commander)return;const index=player.battlefield.findIndex(c=>c.instanceId===player.commander?.instanceId);if(index<0)return;const [card]=player.battlefield.splice(index,1);card.zone='command';card.tapped=false;card.summoningSick=false;player.commander=card;player.commanderTax+=2;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Returned ${card.name} to the command zone. Commander tax is now +${player.commanderTax}.`});});
- const addManual=(name:string,p?:number,t?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,p,t)});
- const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;const blocked=new Set(game.pendingCombat.aiBlocks?.map(block=>block.attackerId)??[]);const commanderDamage=human.battlefield.filter(card=>card.isCommander&&game.pendingCombat?.attackerInstanceIds.includes(card.instanceId)&&!blocked.has(card.instanceId)).reduce((sum,card)=>sum+(currentStats(card)?.power??0),0);if(commanderDamage>0&&game.settings.commanderDamageEnabled)mutateGame(next=>{const defender=next.players.find(p=>p.id===game.pendingCombat?.defenderId);if(!defender)return;defender.commanderDamage['player']=(defender.commanderDamage['player']??0)+commanderDamage;next.log.push({id:uid(),turn:next.turnNumber,actor:'Combat',message:`${commanderDamage} commander damage dealt (${defender.commanderDamage['player']}/21).`});});dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([])};
- const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Assigning blockers for incoming combat.'});
- const resolveBlocks=(assignments:BlockAssignment[])=>dispatch({type:'RESOLVE_BLOCKS',assignments});
- const damageOpponentCard=(card:CardInstance,amount:number)=>{const next=card.damageMarked+amount;dispatch({type:'UPDATE_CARD',playerId:ai.id,instanceId:card.instanceId,patch:{damageMarked:next},log:`${resolvingSpell?.name ?? 'Spell'} dealt ${amount} damage to ${card.name}.`});const stats=currentStats(card);if(stats&&next>=stats.toughness)dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'});};
- const finishSpell=()=>{if(!resolvingSpell)return;dispatch({type:'CAST_PLAYER_SPELL',card:createCardInstance(resolvingSpell,'player','graveyard')});setResolvingSpell(undefined);};
- const counterPendingWithPlayerSpell=()=>{if(!game.pendingAIAction)return;dispatch({type:'COUNTER_AI_ACTION'});};
+  const router=useRouter();
+  const [game,setGame]=useState<GameState|null>(null);
+  const [past,setPast]=useState<GameState[]>([]);
+  const [future,setFuture]=useState<GameState[]>([]);
+  const [selected,setSelected]=useState<CardInstance>();
+  const [viewedOpponentCard,setViewedOpponentCard]=useState<CardInstance>();
+  const [viewedHandCard,setViewedHandCard]=useState<CardInstance>();
+  const [searchOpen,setSearchOpen]=useState(false);
+  const [commanderSearchOpen,setCommanderSearchOpen]=useState(false);
+  const [responseSearchOpen,setResponseSearchOpen]=useState(false);
+  const [virtualResponseOpen,setVirtualResponseOpen]=useState(false);
+  const [tokenOpen,setTokenOpen]=useState(false);
+  const [manualOpen,setManualOpen]=useState(false);
+  const [attackMode,setAttackMode]=useState(false);
+  const [attackers,setAttackers]=useState<string[]>([]);
+  const [resolvingSpell,setResolvingSpell]=useState<CardDefinition>();
+  const [resolvingVirtualCardId,setResolvingVirtualCardId]=useState<string>();
 
- return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
-  <header className="flex items-center justify-between py-2"><div className="flex items-center gap-1"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><button onClick={quitGame} className="rounded-xl border border-red-400/20 bg-red-400/[.06] px-2.5 py-2 text-xs font-black uppercase tracking-wide text-red-200">Quit Game</button></div><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
+  useEffect(()=>{setGame(loadGame()??newGame(fallbackSettings));},[]);
+  useEffect(()=>{if(game)saveGame(game);},[game]);
 
-  <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)] xl:items-stretch xl:gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(400px,0.8fr)]">
-   <div className="min-w-0 space-y-3">
-    <section className="rounded-2xl border border-white/10 bg-white/[.035] p-3"><PlayerHeader name={ai.name} life={ai.life} onLife={d=>dispatch({type:'LIFE',playerId:ai.id,delta:d})} meta={`${ai.handCount} hand · ${ai.graveyard.length} grave · ${ai.exile.length} exile`}/><CommanderZone commander={ai.commander} tax={ai.commanderTax} damage={human.commanderDamage[ai.id]??0} readOnly onView={setViewedOpponentCard}/><Battlefield cards={ai.battlefield} onCard={setViewedOpponentCard}/></section>
+  // In Virtual mode, draw one real card from the saved deck whenever a new player turn begins.
+  useEffect(()=>{
+    if(!game||game.settings.mode!=='virtual'||game.activePlayerId!=='player'||game.turnNumber<=1)return;
+    const human=game.players.find(player=>player.id==='player');
+    if(!human||human.lastAutoDrawTurn===game.turnNumber)return;
+    setGame(current=>{
+      if(!current)return current;
+      const next=structuredClone(current);
+      const player=next.players.find(entry=>entry.id==='player');
+      if(!player||player.lastAutoDrawTurn===next.turnNumber)return current;
+      player.lastAutoDrawTurn=next.turnNumber;
+      player.landPlayedThisTurn=false;
+      const drawn=player.virtualLibrary?.shift();
+      if(drawn){drawn.zone='hand';player.virtualHand?.push(drawn);player.handCount=player.virtualHand?.length??player.handCount+1;player.libraryCount=player.virtualLibrary?.length??player.libraryCount;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Drew ${drawn.name}.`});}
+      else next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:'Tried to draw, but the library is empty.'});
+      next.updatedAt=new Date().toISOString();
+      return next;
+    });
+  },[game?.turnNumber,game?.activePlayerId,game?.settings.mode]);
 
-    <section className="rounded-2xl border border-white/10 bg-white/[.05] p-3 shadow-2xl"><PlayerHeader name="My Battlefield" life={human.life} onLife={d=>dispatch({type:'LIFE',playerId:'player',delta:d})} meta={`${human.graveyard.length} grave · ${human.exile.length} exile`}/><CommanderZone commander={human.commander} tax={human.commanderTax} damage={ai.commanderDamage['player']??0} onSelect={()=>setCommanderSearchOpen(true)} onCast={castCommander} onReturn={returnCommander} onView={cardTap}/><Battlefield cards={human.battlefield} onCard={cardTap} selectedIds={attackers} combatMode={attackMode} combatUnavailableIds={combatUnavailableIds}/>
-     {game.settings.tutorMode&&attackMode&&<p className="mb-3 rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">Select untapped creatures without summoning sickness that are allowed to attack. Commander combat damage is tracked separately.</p>}
-     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Action onClick={()=>setSearchOpen(true)}>＋ PLAY CARD</Action><Action onClick={()=>setTokenOpen(true)}>＋ TOKEN</Action><Action onClick={()=>setManualOpen(true)}>＋ MANUAL</Action><Action onClick={()=>{if(!isPlayerTurn)return;setAttackMode(v=>!v);setAttackers([])}} disabled={!isPlayerTurn}>{attackMode?'CANCEL ATTACK':'⚔ COMBAT'}</Action></div>
-     {attackMode&&<button disabled={!attackers.length||Boolean(game.pendingCombat)} onClick={()=>dispatch({type:'PLAYER_ATTACK',attackerIds:attackers,defenderId:ai.id})} className="mt-2 w-full rounded-xl bg-red-500 py-3 font-black disabled:opacity-40">ATTACK WITH {attackers.length || 0}</button>}
-    </section>
+  const dispatch=(action:GameAction)=>setGame(current=>{if(!current)return current;setPast(history=>[...history.slice(-39),current]);setFuture([]);return reduceGame(current,action);});
+  const mutateGame=(mutator:(next:GameState)=>void)=>setGame(current=>{if(!current)return current;setPast(history=>[...history.slice(-39),current]);setFuture([]);const next=structuredClone(current);mutator(next);next.updatedAt=new Date().toISOString();return next;});
+  const undo=()=>{if(!game||past.length===0)return;const previous=past[past.length-1];setFuture(items=>[game,...items]);setPast(items=>items.slice(0,-1));setGame(previous);};
+  const redo=()=>{if(!game||future.length===0)return;const next=future[0];setPast(items=>[...items,game]);setFuture(items=>items.slice(1));setGame(next);};
+  const quitGame=()=>{clearGame();router.replace('/');};
 
-    {isPlayerTurn ? <TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/> : <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">{game.pendingAIAction?'Opponent cast a spell. Resolve it, counter it, or cast a response.':game.pendingCombat?'Opponent is attacking. Resolve combat to continue.':'Opponent is taking their turn.'}</div>}
-    <QuickReference active={isPlayerTurn}/>
-   </div>
+  const human=game?.players.find(player=>player.id==='player');
+  const ai=game?.players.find(player=>player.isAI);
+  const eligible=useMemo(()=>human?.battlefield.filter(card=>card.basePower!==undefined&&!card.tapped&&!card.summoningSick&&!card.combatDisabled)??[],[human]);
+  const combatUnavailableIds=useMemo(()=>human?.battlefield.filter(card=>card.basePower!==undefined&&(card.tapped||card.summoningSick||card.combatDisabled)).map(card=>card.instanceId)??[],[human]);
+  if(!game||!human||!ai)return <div className="flex min-h-screen items-center justify-center text-zinc-400">Loading game…</div>;
 
-   <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3">
-    <div className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 transition sm:px-4 ${isPlayerTurn?'border-emerald-400/30 bg-emerald-400/[.06]':'border-amber-400/30 bg-amber-400/[.05]'}`}>
-      <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Turn</div><div className="text-lg font-black leading-none text-zinc-100">{game.turnNumber}</div></div>
-      <div className="flex items-center justify-center gap-2 text-center"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${isPlayerTurn?'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.65)]':'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,.55)]'}`}/><span className="text-sm font-black uppercase tracking-wide">{isPlayerTurn?'Your Turn':`${ai.name}'s Turn`}</span></div>
-      <div className="text-right"><div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Spells</div><div className="text-lg font-black leading-none text-zinc-100">{game.spellsCastThisTurn}</div></div>
+  const isVirtual=game.settings.mode==='virtual';
+  const isPlayerTurn=game.activePlayerId==='player';
+  const incomingAttackers=game.pendingCombat?.source==='ai'?ai.battlefield.filter(card=>game.pendingCombat?.attackerInstanceIds.includes(card.instanceId)):[];
+
+  const cardTap=(card:CardInstance)=>{if(attackMode){if(eligible.some(entry=>entry.instanceId===card.instanceId))setAttackers(current=>current.includes(card.instanceId)?current.filter(id=>id!==card.instanceId):[...current,card.instanceId]);return;}setSelected(card);};
+  const addDefinition=(definition:CardDefinition)=>{const type=definition.typeLine.toLowerCase();if(type.includes('instant')||type.includes('sorcery')){setResolvingSpell(definition);return;}dispatch({type:'ADD_CARD',playerId:'player',card:createCardInstance(definition,'player','battlefield')});};
+  const addResponseDefinition=(definition:CardDefinition)=>{const type=definition.typeLine.toLowerCase();if(type.includes('instant')||type.includes('sorcery'))setResolvingSpell(definition);else dispatch({type:'LOG',actor:'Tutor',message:`${definition.name} is not an instant or sorcery response.`});};
+  const addCommander=(definition:CardDefinition)=>{const type=definition.typeLine.toLowerCase();const valid=type.includes('legendary')&&(type.includes('creature')||definition.oracleText?.toLowerCase().includes('can be your commander'));if(!valid){dispatch({type:'LOG',actor:'Tutor',message:`${definition.name} is not recognized as a legal commander.`});return;}mutateGame(next=>{const player=next.players.find(entry=>entry.id==='player');if(!player)return;const commander=createCardInstance(definition,'player','command');commander.isCommander=true;player.commander=commander;player.commanderTax=0;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Selected ${definition.name} as commander.`});});};
+  const castCommander=()=>mutateGame(next=>{const player=next.players.find(entry=>entry.id==='player');if(!player?.commander||player.commander.zone!=='command')return;const card=structuredClone(player.commander);card.zone='battlefield';card.tapped=false;card.summoningSick=true;card.isCommander=true;player.commander={...card};player.battlefield.push(card);next.spellsCastThisTurn+=1;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Cast commander ${card.name} with +${player.commanderTax} commander tax.`});});
+  const returnCommander=()=>mutateGame(next=>{const player=next.players.find(entry=>entry.id==='player');if(!player?.commander)return;const index=player.battlefield.findIndex(card=>card.instanceId===player.commander?.instanceId);if(index<0)return;const [card]=player.battlefield.splice(index,1);card.zone='command';card.tapped=false;card.summoningSick=false;player.commander=card;player.commanderTax+=2;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Returned ${card.name} to the command zone. Commander tax is now +${player.commanderTax}.`});});
+  const addManual=(name:string,power?:number,toughness?:number)=>dispatch({type:'ADD_CARD',playerId:'player',card:createToken('player',name,power,toughness)});
+
+  const playVirtualCard=(card:CardInstance)=>{
+    if(!isPlayerTurn&&!game.pendingAIAction)return;
+    const type=card.definition?.typeLine.toLowerCase()??'';
+    if(type.includes('instant')||type.includes('sorcery')){setResolvingVirtualCardId(card.instanceId);setResolvingSpell(card.definition);setVirtualResponseOpen(false);return;}
+    if(!isPlayerTurn)return;
+    mutateGame(next=>{
+      const player=next.players.find(entry=>entry.id==='player');
+      if(!player?.virtualHand)return;
+      const index=player.virtualHand.findIndex(entry=>entry.instanceId===card.instanceId);
+      if(index<0)return;
+      const [fromHand]=player.virtualHand.splice(index,1);
+      if(type.includes('land')){
+        if(player.landPlayedThisTurn){player.virtualHand.splice(index,0,fromHand);return;}
+        const permanent=fromHand.definition?createCardInstance(fromHand.definition,'player','battlefield'):fromHand;
+        permanent.zone='battlefield';player.battlefield.push(permanent);player.landPlayedThisTurn=true;
+        next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Played ${fromHand.name} as your land for the turn.`});
+      }else{
+        const permanent=fromHand.definition?createCardInstance(fromHand.definition,'player','battlefield'):fromHand;
+        permanent.zone='battlefield';player.battlefield.push(permanent);next.spellsCastThisTurn+=1;
+        next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Cast ${fromHand.name} from hand.`});
+      }
+      player.handCount=player.virtualHand.length;
+    });
+  };
+
+  const resolvePlayerDamage=()=>{if(!game.pendingCombat||game.pendingCombat.source!=='player')return;const blocked=new Set(game.pendingCombat.aiBlocks?.map(block=>block.attackerId)??[]);const commanderDamage=human.battlefield.filter(card=>card.isCommander&&game.pendingCombat?.attackerInstanceIds.includes(card.instanceId)&&!blocked.has(card.instanceId)).reduce((sum,card)=>sum+(currentStats(card)?.power??0),0);if(commanderDamage>0&&game.settings.commanderDamageEnabled)mutateGame(next=>{const defender=next.players.find(entry=>entry.id===game.pendingCombat?.defenderId);if(!defender)return;defender.commanderDamage.player=(defender.commanderDamage.player??0)+commanderDamage;next.log.push({id:uid(),turn:next.turnNumber,actor:'Combat',message:`${commanderDamage} commander damage dealt (${defender.commanderDamage.player}/21).`});});dispatch({type:'LIFE',playerId:game.pendingCombat.defenderId,delta:-game.pendingCombat.totalPower});dispatch({type:'SET_COMBAT',combat:undefined});setAttackMode(false);setAttackers([]);};
+  const beginBlock=()=>dispatch({type:'LOG',actor:'You',message:'Assigning blockers for incoming combat.'});
+  const resolveBlocks=(assignments:BlockAssignment[])=>dispatch({type:'RESOLVE_BLOCKS',assignments});
+  const damageOpponentCard=(card:CardInstance,amount:number)=>{const marked=card.damageMarked+amount;dispatch({type:'UPDATE_CARD',playerId:ai.id,instanceId:card.instanceId,patch:{damageMarked:marked},log:`${resolvingSpell?.name??'Spell'} dealt ${amount} damage to ${card.name}.`});const stats=currentStats(card);if(stats&&marked>=stats.toughness)dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'});};
+
+  const finishSpell=()=>{
+    if(!resolvingSpell)return;
+    if(isVirtual&&resolvingVirtualCardId){
+      const spellDefinition=resolvingSpell;
+      const cardId=resolvingVirtualCardId;
+      mutateGame(next=>{const player=next.players.find(entry=>entry.id==='player');if(!player?.virtualHand)return;const index=player.virtualHand.findIndex(card=>card.instanceId===cardId);if(index<0)return;const [spell]=player.virtualHand.splice(index,1);spell.zone='graveyard';player.graveyard.push(spell);player.handCount=player.virtualHand.length;next.spellsCastThisTurn+=1;next.log.push({id:uid(),turn:next.turnNumber,actor:'You',message:`Cast and resolved ${spellDefinition.name} from hand; moved it to graveyard.`});});
+    }else dispatch({type:'CAST_PLAYER_SPELL',card:createCardInstance(resolvingSpell,'player','graveyard')});
+    setResolvingSpell(undefined);setResolvingVirtualCardId(undefined);
+  };
+  const cancelSpell=()=>{setResolvingSpell(undefined);setResolvingVirtualCardId(undefined);};
+  const counterPendingWithPlayerSpell=()=>{if(game.pendingAIAction)dispatch({type:'COUNTER_AI_ACTION'});};
+  const startResponse=()=>{if(isVirtual)setVirtualResponseOpen(true);else setResponseSearchOpen(true);};
+
+  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
+    <header className="flex items-center justify-between py-2">
+      <div className="flex items-center gap-1"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><button onClick={quitGame} className="rounded-xl border border-red-400/20 bg-red-400/[.06] px-2.5 py-2 text-xs font-black uppercase tracking-wide text-red-200">Quit Game</button></div>
+      <div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{isVirtual?'Virtual':'Physical'} · {game.settings.difficulty} AI</div></div>
+      <div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div>
+    </header>
+
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)] xl:items-stretch xl:gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(400px,0.8fr)]">
+      <div className="min-w-0 space-y-3">
+        <section className="rounded-2xl border border-white/10 bg-white/[.035] p-3"><PlayerHeader name={ai.name} life={ai.life} onLife={delta=>dispatch({type:'LIFE',playerId:ai.id,delta})} meta={`${ai.handCount} hand · ${ai.libraryCount??'?'} library · ${ai.graveyard.length} grave`}/><CommanderZone commander={ai.commander} tax={ai.commanderTax} damage={human.commanderDamage[ai.id]??0} readOnly onView={setViewedOpponentCard}/><Battlefield cards={ai.battlefield} onCard={setViewedOpponentCard}/></section>
+
+        <section className="rounded-2xl border border-white/10 bg-white/[.05] p-3 shadow-2xl">
+          <PlayerHeader name="My Battlefield" life={human.life} onLife={delta=>dispatch({type:'LIFE',playerId:'player',delta})} meta={isVirtual?`${human.handCount} hand · ${human.libraryCount??0} library · ${human.graveyard.length} grave`:`${human.graveyard.length} grave · ${human.exile.length} exile`}/>
+          <CommanderZone commander={human.commander} tax={human.commanderTax} damage={ai.commanderDamage.player??0} onSelect={isVirtual?undefined:()=>setCommanderSearchOpen(true)} onCast={castCommander} onReturn={returnCommander} onView={cardTap}/>
+          <Battlefield cards={human.battlefield} onCard={cardTap} selectedIds={attackers} combatMode={attackMode} combatUnavailableIds={combatUnavailableIds}/>
+          {game.settings.tutorMode&&attackMode&&<p className="mb-3 rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">Select untapped creatures without summoning sickness that are allowed to attack. Commander combat damage is tracked separately.</p>}
+          <div className={`grid grid-cols-2 gap-2 ${isVirtual?'sm:grid-cols-3':'sm:grid-cols-4'}`}>
+            {!isVirtual&&<Action onClick={()=>setSearchOpen(true)}>＋ PLAY CARD</Action>}
+            <Action onClick={()=>setTokenOpen(true)}>＋ TOKEN</Action><Action onClick={()=>setManualOpen(true)}>＋ MANUAL</Action><Action onClick={()=>{if(!isPlayerTurn)return;setAttackMode(value=>!value);setAttackers([]);}} disabled={!isPlayerTurn}>{attackMode?'CANCEL ATTACK':'⚔ COMBAT'}</Action>
+          </div>
+          {attackMode&&<button disabled={!attackers.length||Boolean(game.pendingCombat)} onClick={()=>dispatch({type:'PLAYER_ATTACK',attackerIds:attackers,defenderId:ai.id})} className="mt-2 w-full rounded-xl bg-red-500 py-3 font-black disabled:opacity-40">ATTACK WITH {attackers.length||0}</button>}
+        </section>
+
+        {isVirtual&&<VirtualHand cards={human.virtualHand??[]} libraryCount={human.virtualLibrary?.length??0} landPlayed={Boolean(human.landPlayedThisTurn)} onPlay={playVirtualCard} onView={setViewedHandCard}/>} 
+
+        {isPlayerTurn?<TurnControls onPass={()=>dispatch({type:'PASS_TURN'})}/>:<div className="rounded-2xl border border-amber-400/20 bg-amber-400/[.04] px-4 py-3 text-center text-sm font-bold text-amber-100/80">{game.pendingAIAction?'Opponent cast a spell. Resolve it, counter it, or cast a response.':game.pendingCombat?'Opponent is attacking. Resolve combat to continue.':'Opponent is taking their turn.'}</div>}
+        <QuickReference active={isPlayerTurn}/>
+      </div>
+
+      <aside className="min-w-0 xl:h-full xl:self-stretch"><div className="flex h-full min-h-0 flex-col gap-3 xl:sticky xl:top-3">
+        <div className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 transition sm:px-4 ${isPlayerTurn?'border-emerald-400/30 bg-emerald-400/[.06]':'border-amber-400/30 bg-amber-400/[.05]'}`}><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Turn</div><div className="text-lg font-black leading-none text-zinc-100">{game.turnNumber}</div></div><div className="flex items-center justify-center gap-2 text-center"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${isPlayerTurn?'bg-emerald-400':'bg-amber-400'}`}/><span className="text-sm font-black uppercase tracking-wide">{isPlayerTurn?'Your Turn':`${ai.name}'s Turn`}</span></div><div className="text-right"><div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Spells</div><div className="text-lg font-black leading-none text-zinc-100">{game.spellsCastThisTurn}</div></div></div>
+        <GameLog entries={game.log}/>
+      </div></aside>
     </div>
-    <GameLog entries={game.log}/>
-   </div></aside>
-  </div>
 
-  <SpellResolver spell={resolvingSpell} opponentName={ai.name} opponentLife={ai.life} opponentCards={ai.battlefield} pendingOpponentSpell={game.pendingAIAction?.cardName} onDamageOpponent={amount=>dispatch({type:'LIFE',playerId:ai.id,delta:-amount})} onDamageCard={damageOpponentCard} onDestroyCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'})} onExileCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'exile'})} onCounterOpponentSpell={counterPendingWithPlayerSpell} onFinish={finishSpell} onCancel={()=>setResolvingSpell(undefined)}/>
-  {!resolvingSpell&&!responseSearchOpen&&<AIActionModal action={game.pendingAIAction} onResolve={definition=>dispatch({type:'RESOLVE_AI_ACTION',definition})} onCounter={()=>dispatch({type:'COUNTER_AI_ACTION'})} onCastResponse={()=>setResponseSearchOpen(true)}/>} 
-  <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={n=>dispatch({type:'RESOLVE_AI_DAMAGE',amount:n})} onBeginBlock={beginBlock} onResolveBlocks={resolveBlocks} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
+    <SpellResolver spell={resolvingSpell} opponentName={ai.name} opponentLife={ai.life} opponentCards={ai.battlefield} pendingOpponentSpell={game.pendingAIAction?.cardName} onDamageOpponent={amount=>dispatch({type:'LIFE',playerId:ai.id,delta:-amount})} onDamageCard={damageOpponentCard} onDestroyCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'graveyard'})} onExileCard={card=>dispatch({type:'MOVE_CARD',playerId:ai.id,instanceId:card.instanceId,zone:'exile'})} onCounterOpponentSpell={counterPendingWithPlayerSpell} onFinish={finishSpell} onCancel={cancelSpell}/>
+    {!resolvingSpell&&!responseSearchOpen&&!virtualResponseOpen&&<AIActionModal action={game.pendingAIAction} onResolve={definition=>dispatch({type:'RESOLVE_AI_ACTION',definition})} onCounter={()=>dispatch({type:'COUNTER_AI_ACTION'})} onCastResponse={startResponse}/>} 
+    <VirtualResponsePicker open={virtualResponseOpen} cards={human.virtualHand??[]} onChoose={playVirtualCard} onClose={()=>setVirtualResponseOpen(false)}/>
+    <CombatPanel combat={game.pendingCombat} playerCards={human.battlefield} attackerCards={incomingAttackers} onTake={amount=>dispatch({type:'RESOLVE_AI_DAMAGE',amount})} onBeginBlock={beginBlock} onResolveBlocks={resolveBlocks} onResolvePlayer={resolvePlayerDamage} onCancel={()=>dispatch({type:'SET_COMBAT',combat:undefined})}/>
 
-  <CardSearch open={searchOpen} onClose={()=>setSearchOpen(false)} onChoose={addDefinition}/><CardSearch open={commanderSearchOpen} onClose={()=>setCommanderSearchOpen(false)} onChoose={addCommander}/><CardSearch open={responseSearchOpen} onClose={()=>setResponseSearchOpen(false)} onChoose={addResponseDefinition}/><TokenCreator open={tokenOpen} onClose={()=>setTokenOpen(false)} onAdd={addManual}/><ManualCardCreator open={manualOpen} onClose={()=>setManualOpen(false)} onAdd={addManual}/>
-  <CardActionSheet card={selected} onClose={()=>setSelected(undefined)} onUpdate={(patch,log)=>{if(selected)dispatch({type:'UPDATE_CARD',playerId:'player',instanceId:selected.instanceId,patch,log});setSelected(undefined)}} onMove={zone=>{if(selected)dispatch({type:'MOVE_CARD',playerId:'player',instanceId:selected.instanceId,zone});setSelected(undefined)}}/>
-  <CardDetailModal card={viewedOpponentCard} onClose={()=>setViewedOpponentCard(undefined)}/>
- </main>;
+    <CardSearch open={searchOpen} onClose={()=>setSearchOpen(false)} onChoose={addDefinition}/>
+    <CardSearch open={commanderSearchOpen} onClose={()=>setCommanderSearchOpen(false)} onChoose={addCommander}/>
+    <CardSearch open={responseSearchOpen} onClose={()=>setResponseSearchOpen(false)} onChoose={definition=>{setResponseSearchOpen(false);addResponseDefinition(definition);}}/>
+    <TokenCreator open={tokenOpen} onClose={()=>setTokenOpen(false)} onAdd={addManual}/><ManualCardCreator open={manualOpen} onClose={()=>setManualOpen(false)} onAdd={addManual}/>
+    <CardActionSheet card={selected} onClose={()=>setSelected(undefined)} onUpdate={(patch,log)=>{if(selected)dispatch({type:'UPDATE_CARD',playerId:'player',instanceId:selected.instanceId,patch,log});setSelected(undefined);}} onMove={zone=>{if(selected)dispatch({type:'MOVE_CARD',playerId:'player',instanceId:selected.instanceId,zone});setSelected(undefined);}}/>
+    <CardDetailModal card={viewedOpponentCard} onClose={()=>setViewedOpponentCard(undefined)}/><CardDetailModal card={viewedHandCard} onClose={()=>setViewedHandCard(undefined)}/>
+  </main>;
 }
 
-function QuickReference({active}:{active:boolean}){
- return <section className={`rounded-2xl border p-4 ${active?'border-emerald-400/25 bg-emerald-400/[.05]':'border-white/10 bg-black/20 opacity-70'}`}>
-  <div className="mb-3 flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Quick Reference</div><h3 className="text-sm font-black uppercase tracking-wide text-zinc-100">On Your Turn</h3></div><span className={`h-2.5 w-2.5 rounded-full ${active?'bg-emerald-400':'bg-zinc-600'}`}/></div>
-  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs leading-5 text-zinc-300 sm:grid-cols-5"><div><span className="font-black text-zinc-100">1. Begin</span><br/>Untap, upkeep, draw.</div><div><span className="font-black text-zinc-100">2. Main</span><br/>Play a land; cast spells.</div><div><span className="font-black text-zinc-100">3. Combat</span><br/>Declare attacks and resolve blocks.</div><div><span className="font-black text-zinc-100">4. Main 2</span><br/>Play a land if unused; cast spells.</div><div><span className="font-black text-zinc-100">5. End</span><br/>Cleanup, then pass turn.</div></div>
- </section>
-}
-
-function Action({children,onClick,disabled=false}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean}){return <button onClick={onClick} disabled={disabled} className="min-h-12 rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-35">{children}</button>}
+function QuickReference({active}:{active:boolean}){return <section className={`rounded-2xl border p-4 ${active?'border-emerald-400/25 bg-emerald-400/[.05]':'border-white/10 bg-black/20 opacity-70'}`}><div className="mb-3 flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Quick Reference</div><h3 className="text-sm font-black uppercase tracking-wide text-zinc-100">On Your Turn</h3></div><span className={`h-2.5 w-2.5 rounded-full ${active?'bg-emerald-400':'bg-zinc-600'}`}/></div><div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs leading-5 text-zinc-300 sm:grid-cols-5"><div><b className="text-zinc-100">1. Begin</b><br/>Untap, upkeep, draw.</div><div><b className="text-zinc-100">2. Main</b><br/>Play a land; cast spells.</div><div><b className="text-zinc-100">3. Combat</b><br/>Declare attacks and resolve blocks.</div><div><b className="text-zinc-100">4. Main 2</b><br/>Cast more spells.</div><div><b className="text-zinc-100">5. End</b><br/>Cleanup, then pass turn.</div></div></section>;}
+function Action({children,onClick,disabled=false}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean}){return <button onClick={onClick} disabled={disabled} className="min-h-12 rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-35">{children}</button>;}
