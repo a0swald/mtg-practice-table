@@ -159,13 +159,52 @@ export function CombatPanel({
     );
   }
 
+  const aiBlocks = combat.aiBlocks ?? [];
   return (
     <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4">
-      <div className="font-black">Attack declared for {combat.totalPower}</div>
-      <p className="mt-1 text-sm text-zinc-300">Confirm damage after handling physical blockers at the table.</p>
+      <div className="text-xs font-black uppercase tracking-widest text-emerald-200">Opponent blocks</div>
+      <div className="mt-1 text-xl font-black">
+        {aiBlocks.length ? `${aiBlocks.length} block${aiBlocks.length === 1 ? '' : 's'} declared` : 'No blocks'}
+      </div>
+
+      {aiBlocks.length ? (
+        <div className="mt-3 space-y-2">
+          {aiBlocks.map(block => {
+            const attackerDies = block.blockerPower >= block.attackerToughness;
+            const blockerDies = block.attackerPower >= block.blockerToughness;
+            return (
+              <div key={`${block.attackerId}:${block.blockerId}`} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-sm font-black text-zinc-100">
+                  {block.blockerName} blocks {block.attackerName}
+                </div>
+                <div className="mt-1 text-xs text-zinc-400">
+                  {block.attackerName} {block.attackerPower}/{block.attackerToughness} ↔ {block.blockerName} {block.blockerPower}/{block.blockerToughness}
+                </div>
+                <div className="mt-2 text-xs leading-5 text-zinc-300">
+                  {block.blockerName} deals <strong>{block.blockerPower}</strong> damage; {block.attackerName} deals <strong>{block.attackerPower}</strong> damage.
+                </div>
+                <div className="mt-1 text-xs font-bold text-zinc-200">
+                  {attackerDies ? `${block.attackerName} will be destroyed. ` : `${block.attackerName} survives. `}
+                  {blockerDies ? `${block.blockerName} will be destroyed.` : `${block.blockerName} survives.`}
+                </div>
+                <div className="mt-2 rounded-lg bg-white/[.04] px-2 py-1.5 text-[11px] leading-4 text-zinc-400">
+                  Why: {block.reason}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-300">The opponent chose not to block this attack.</p>
+      )}
+
+      <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-200">
+        Damage getting through to opponent: <strong>{combat.totalPower}</strong>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-zinc-400">Review the opponent's blocks before resolving. Basic simultaneous combat damage is calculated automatically.</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button onClick={onResolvePlayer} className="rounded-xl bg-emerald-400 py-3 font-black text-black">DEAL DAMAGE</button>
-        <button onClick={onCancel} className="rounded-xl bg-white/10 py-3 font-bold">CANCEL</button>
+        <button onClick={onResolvePlayer} className="rounded-xl bg-emerald-400 py-3 font-black text-black">RESOLVE COMBAT</button>
+        <button onClick={onCancel} className="rounded-xl bg-white/10 py-3 font-bold">CANCEL ATTACK</button>
       </div>
     </div>
   );
