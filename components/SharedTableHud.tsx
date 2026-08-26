@@ -18,6 +18,7 @@ type HudPayload = { code: string; playerId: string; players: HudPlayer[] };
 
 const HUD_KEY = 'mtg-practice-shared-table-hud-v1';
 const HUD_EVENT = 'mtg-practice:shared-table-hud';
+const MENU_GAP = 4;
 
 function readHud(): HudPayload | null {
   try {
@@ -26,11 +27,6 @@ function readHud(): HudPayload | null {
   } catch {
     return null;
   }
-}
-
-function rotationFor(player: HudPlayer | undefined) {
-  if (!player || player.orientation === 'auto') return 0;
-  return player.orientation;
 }
 
 export default function SharedTableHud() {
@@ -54,7 +50,6 @@ export default function SharedTableHud() {
 
   const you = useMemo(() => hud?.players.find(player => player.you), [hud]);
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
-  const rotation = rotationFor(you);
 
   useEffect(() => {
     if (!isUtility || !you || others.length === 0) return;
@@ -68,16 +63,17 @@ export default function SharedTableHud() {
 
       if (wrapper && inner && menuButton) {
         const menuRect = menuButton.getBoundingClientRect();
-        const width = inner.offsetWidth;
-        const height = inner.offsetHeight;
-        const sideways = rotation === 90 || rotation === 270;
-        const visualWidth = sideways ? height : width;
-        const offsetLeft = sideways ? (width - height) / 2 : 0;
-        const offsetTop = sideways ? (height - width) / 2 : 0;
+        const availableWidth = Math.max(76, menuRect.left - MENU_GAP - 8);
+        inner.style.maxWidth = `${availableWidth}px`;
 
-        wrapper.style.left = `${Math.max(4, menuRect.left - 4 - visualWidth - offsetLeft)}px`;
-        wrapper.style.top = `${Math.max(4, menuRect.top - offsetTop)}px`;
-        wrapper.style.transform = playerCard ? window.getComputedStyle(playerCard).transform.replace('none', '') : '';
+        const hudWidth = Math.min(inner.scrollWidth, availableWidth);
+        wrapper.style.left = `${Math.max(4, menuRect.left - MENU_GAP - hudWidth)}px`;
+        wrapper.style.top = `${menuRect.top}px`;
+        wrapper.style.width = `${hudWidth}px`;
+        wrapper.style.height = `${menuRect.height}px`;
+
+        const cardTransform = playerCard ? window.getComputedStyle(playerCard).transform : 'none';
+        wrapper.style.transform = cardTransform === 'none' ? '' : cardTransform;
       }
 
       frame = window.requestAnimationFrame(placeHud);
@@ -85,29 +81,29 @@ export default function SharedTableHud() {
 
     frame = window.requestAnimationFrame(placeHud);
     return () => window.cancelAnimationFrame(frame);
-  }, [isUtility, others.length, rotation, you]);
+  }, [isUtility, others.length, you]);
 
   if (!isUtility || !hud || !you || others.length === 0) return null;
 
   return (
-    <div ref={wrapperRef} className="pointer-events-none fixed z-30 origin-top-left transition-transform duration-200">
-      <div ref={innerRef} style={{ transform: `rotate(${rotation}deg)` }} className="flex max-w-[min(72vw,360px)] items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1.5 shadow-xl backdrop-blur-md scrollbar-none">
+    <div ref={wrapperRef} className="pointer-events-none fixed z-30 transition-transform duration-200">
+      <div ref={innerRef} className="flex h-14 w-max max-w-full items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
-          <div key={player.id} className="flex min-w-[76px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5 py-2">
-            <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
+          <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5">
+            <div className="flex h-full w-4 shrink-0 flex-col items-center justify-center gap-1">
+              <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
+              {player.connected ? <Wifi size={11} className="text-emerald-300" /> : <WifiOff size={11} className="text-red-300" />}
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-white/70">
-                <span className="max-w-[58px] truncate">{player.name}</span>
+                <span className="max-w-[64px] truncate">{player.name}</span>
                 {player.host && <Crown size={10} />}
               </div>
-              <div className="flex items-center gap-1 text-xl font-black leading-none tabular-nums text-white">
-                {player.life}
-                {player.connected ? <Wifi size={11} className="text-emerald-300" /> : <WifiOff size={11} className="text-red-300" />}
-              </div>
+              <div className="text-xl font-black leading-none tabular-nums text-white">{player.life}</div>
             </div>
           </div>
         ))}
-        <div className="shrink-0 px-1.5 text-[8px] font-black tracking-[.16em] text-white/35">{hud.code}</div>
+        <div className="flex h-full shrink-0 items-center px-1.5 text-[8px] font-black tracking-[.16em] text-white/35">{hud.code}</div>
       </div>
     </div>
   );
