@@ -11,6 +11,7 @@ export type BlockAssignment = {
 export type GameAction =
   | { type: 'LIFE'; playerId: string; delta: number }
   | { type: 'ADD_CARD'; playerId: string; card: CardInstance }
+  | { type: 'CAST_PLAYER_SPELL'; card: CardInstance }
   | { type: 'UPDATE_CARD'; playerId: string; instanceId: string; patch: Partial<CardInstance>; log?: string }
   | { type: 'MOVE_CARD'; playerId: string; instanceId: string; zone: Zone }
   | { type: 'PASS_TURN' }
@@ -101,6 +102,16 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
       else if (action.card.zone === 'graveyard') player.graveyard.push(action.card);
       else if (action.card.zone === 'exile') player.exile.push(action.card);
       withLog(game, player.name, `Added ${action.card.name} to ${action.card.zone}.`);
+    }
+  }
+
+  if (action.type === 'CAST_PLAYER_SPELL') {
+    const player = getPlayer('player');
+    if (player) {
+      action.card.zone = 'graveyard';
+      player.graveyard.push(action.card);
+      game.spellsCastThisTurn += 1;
+      withLog(game, 'You', `Cast and resolved ${action.card.name}; moved it to graveyard.`);
     }
   }
 
