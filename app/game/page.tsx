@@ -1,2 +1,9 @@
 import { GameClient } from '@/components/GameClient';
-export default function GamePage(){return <GameClient/>}
+import { VictoryOverlay } from '@/components/VictoryOverlay';
+
+export default function GamePage(){
+  return <>
+    <GameClient/>
+    <VictoryOverlay/>
+  </>;
+}
