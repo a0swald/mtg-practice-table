@@ -9,20 +9,18 @@ export function AIActionModal({
   action,
   onResolve,
   onCounter,
+  onCastResponse,
 }: {
   action?: PendingAIAction;
   onResolve: (definition?: CardDefinition) => void;
   onCounter: () => void;
+  onCastResponse: () => void;
 }) {
   const [definition, setDefinition] = useState<CardDefinition>();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!action) {
-      setDefinition(undefined);
-      return;
-    }
-
+    if (!action) { setDefinition(undefined); return; }
     let cancelled = false;
     setLoading(true);
     fetch(`/api/cards/named?name=${encodeURIComponent(action.cardName)}`)
@@ -30,7 +28,6 @@ export function AIActionModal({
       .then(card => { if (!cancelled) setDefinition(card); })
       .catch(() => undefined)
       .finally(() => { if (!cancelled) setLoading(false); });
-
     return () => { cancelled = true; };
   }, [action?.cardName]);
 
@@ -50,19 +47,12 @@ export function AIActionModal({
     if (effects.loseLife > 0) result += ` The opponent also loses ${effects.loseLife} life.`;
     if (effects.gainLife > 0) result += ` The opponent also gains ${effects.gainLife} life.`;
   } else if (action.kind === 'removal') {
-    if (effects.disablesAttackAndBlock) {
-      result = `If it resolves, ${action.cardName} enchants ${action.targetName ?? 'the targeted creature'}. That creature stays on the battlefield but can't attack or block.`;
-    } else if (effects.destroysArtifactOrEnchantment) {
-      result = `If it resolves, ${action.targetName ?? 'the target'} is destroyed only if it is an artifact or enchantment.`;
-    } else if (effects.destroysNonartifactCreature) {
-      result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed only if it is a nonartifact creature.`;
-    } else if (effects.destroysNonblackCreature) {
-      result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed only if it is nonblack.`;
-    } else if (effects.destroysCreature) {
-      result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed and moved to its owner's graveyard.`;
-    } else {
-      result = `If it resolves, the app will apply only the Oracle effect it safely understands. It will not incorrectly destroy the target.`;
-    }
+    if (effects.disablesAttackAndBlock) result = `If it resolves, ${action.cardName} enchants ${action.targetName ?? 'the targeted creature'}. That creature stays on the battlefield but can't attack or block.`;
+    else if (effects.destroysArtifactOrEnchantment) result = `If it resolves, ${action.targetName ?? 'the target'} is destroyed only if it is an artifact or enchantment.`;
+    else if (effects.destroysNonartifactCreature) result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed only if it is a nonartifact creature.`;
+    else if (effects.destroysNonblackCreature) result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed only if it is nonblack.`;
+    else if (effects.destroysCreature) result = `If it resolves, ${action.targetName ?? 'the targeted creature'} is destroyed and moved to its owner's graveyard.`;
+    else result = `If it resolves, the app will apply only the Oracle effect it safely understands.`;
   } else {
     result = `If it resolves, ${action.cardName} enters the battlefield and can provide mana according to its Oracle text.`;
   }
@@ -80,22 +70,12 @@ export function AIActionModal({
             {oracleText && <div className="mt-3 whitespace-pre-line rounded-xl border border-white/10 bg-black/25 p-3 text-sm leading-6 text-zinc-200">{oracleText}</div>}
           </div>
         </div>
-
-        {action.kind === 'removal' && (
-          <div className="mt-4 rounded-xl border border-red-400/25 bg-red-400/[.06] p-3 text-sm text-red-100">
-            <span className="font-black">Target:</span> {action.targetName ?? 'your permanent'}
-          </div>
-        )}
-
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[.04] p-3">
-          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">What happens if this resolves</div>
-          <p className="mt-1 text-sm leading-6 text-zinc-200">{result}</p>
-        </div>
-
-        <p className="mt-3 text-xs leading-5 text-zinc-500">The opponent has already cast the spell and paid its cost. The game is paused here so you can acknowledge it or counter it before anything happens.</p>
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        {action.kind === 'removal' && <div className="mt-4 rounded-xl border border-red-400/25 bg-red-400/[.06] p-3 text-sm text-red-100"><span className="font-black">Target:</span> {action.targetName ?? 'your permanent'}</div>}
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[.04] p-3"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">What happens if this resolves</div><p className="mt-1 text-sm leading-6 text-zinc-200">{result}</p></div>
+        <p className="mt-3 text-xs leading-5 text-zinc-500">The opponent has cast the spell and paid its cost. Resolve it, counter it directly, or cast one of your real cards in response.</p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <button onClick={() => onResolve(definition)} className="rounded-xl bg-emerald-400 px-4 py-3 font-black text-zinc-950">RESOLVE</button>
+          <button onClick={onCastResponse} className="rounded-xl border border-violet-300/30 bg-violet-400/10 px-4 py-3 font-black text-violet-100">CAST RESPONSE</button>
           <button onClick={onCounter} className="rounded-xl border border-sky-300/25 bg-white/10 px-4 py-3 font-black text-zinc-100">COUNTER</button>
         </div>
       </div>
