@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { SharedTableSection } from '@/components/SharedTableSection';
+import { useSharedUtilityTable } from '@/lib/shared-table/useSharedUtilityTable';
 
 type CounterKey = 'poison' | 'energy' | 'experience' | 'storm' | 'commanderTax';
 type Facing = 'auto' | 0 | 90 | 180 | 270;
@@ -98,6 +100,7 @@ export default function UtilityPage() {
   const [state, setState] = useState<UtilityState>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [diceResult, setDiceResult] = useState<string>();
+  const shared = useSharedUtilityTable(state, setState);
 
   useEffect(() => {
     try {
@@ -169,13 +172,15 @@ export default function UtilityPage() {
     );
   }
 
-  const count = state.players.length;
-  const singleRotation = count === 1 ? logicalRotation(state.players[0], 0, 1) : 0;
+  const sharedPlayer = shared.session ? state.players.find(player => player.id === shared.session?.playerId) : undefined;
+  const displayPlayers = sharedPlayer ? [sharedPlayer] : state.players;
+  const count = displayPlayers.length;
+  const singleRotation = count === 1 ? logicalRotation(displayPlayers[0], 0, 1) : 0;
 
   return (
     <main className="relative h-[100dvh] w-screen overflow-hidden bg-black text-white [touch-action:none] [user-select:none]">
       <section className={layoutClass(count)}>
-        {state.players.map((player, index) => (
+        {displayPlayers.map((player, index) => (
           <PlayerZone key={player.id} player={player} index={index} count={count} players={state.players} defeated={defeated.has(player.id)} active={state.activePlayerId === player.id} monarch={state.monarchId === player.id} initiative={state.initiativeId === player.id} onLife={delta => life(player.id, delta)} onPatch={fn => patchPlayer(player.id, fn)} onCounter={(key, delta) => counter(player.id, key, delta)} onCommanderDamage={(sourceId, delta) => commanderDamage(player.id, sourceId, delta)} onMonarch={() => setState(current => current ? { ...current, monarchId: current.monarchId === player.id ? undefined : player.id } : current)} onInitiative={() => setState(current => current ? { ...current, initiativeId: current.initiativeId === player.id ? undefined : player.id } : current)} />
         ))}
       </section>
@@ -184,10 +189,11 @@ export default function UtilityPage() {
 
       {menuOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setMenuOpen(false)}>
-          <section onClick={event => event.stopPropagation()} style={{ transform: `rotate(${singleRotation}deg)` }} className="w-[min(82vw,440px)] rounded-[2rem] border border-white/10 bg-[#15181b] p-4 shadow-2xl transition-transform">
+          <section onClick={event => event.stopPropagation()} style={{ transform: `rotate(${singleRotation}deg)` }} className="max-h-[88dvh] w-[min(86vw,440px)] overflow-y-auto rounded-[2rem] border border-white/10 bg-[#15181b] p-4 shadow-2xl transition-transform [touch-action:pan-y]">
             <div className="flex items-center justify-between gap-4"><div><div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Table Menu</div><div className="mt-1 text-xl font-black">Turn {state.turn} · {formatTime(state.seconds)}</div></div><button aria-label="Close table menu" onClick={() => setMenuOpen(false)} className="grid h-12 w-12 place-items-center rounded-xl bg-white/5"><X size={24} /></button></div>
             <div className="mt-4 grid grid-cols-2 gap-2"><MenuAction icon={<Timer size={24} />} label={state.running ? 'PAUSE TIMER' : 'START TIMER'} onClick={() => setState(current => current ? { ...current, running: !current.running } : current)} /><MenuAction label="NEXT TURN" accent onClick={nextTurn} /><MenuAction icon={<Dices size={24} />} label="ROLL D20" onClick={() => setDiceResult(`D20: ${1 + Math.floor(Math.random() * 20)}`)} /><MenuAction icon={<Coins size={24} />} label="FLIP COIN" onClick={() => setDiceResult(Math.random() < .5 ? 'HEADS' : 'TAILS')} /></div>
             {diceResult && <div className="mt-3 rounded-2xl bg-black/25 p-4 text-center text-3xl font-black">{diceResult}</div>}
+            <SharedTableSection session={shared.session} roster={shared.roster} busy={shared.busy} error={shared.error} onHost={shared.host} onJoin={shared.join} onLeave={shared.leave} onClearError={shared.clearError} />
             <div className="mt-4 grid grid-cols-2 gap-2"><MenuAction icon={<RotateCcw size={20} />} label="RESET" onClick={reset} outlined /><MenuAction icon={<LogOut size={20} />} label="QUIT" onClick={quit} danger outlined /></div>
           </section>
         </div>
