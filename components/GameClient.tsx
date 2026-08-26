@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CardDefinition, CardInstance } from '@/types/card';
 import type { GameState } from '@/types/game';
-import { loadGame, saveGame } from '@/lib/storage/gameStorage';
+import { clearGame, loadGame, saveGame } from '@/lib/storage/gameStorage';
 import { createCardInstance, createToken, currentStats, newGame } from '@/lib/game/utils';
 import { reduceGame, type BlockAssignment, type GameAction } from '@/lib/game/reducer';
 import { Battlefield } from './Battlefield';
@@ -30,6 +30,7 @@ export function GameClient() {
  const dispatch=(action:GameAction)=>{setGame(current=>{if(!current)return current;setPast(h=>[...h.slice(-39),current]);setFuture([]);return reduceGame(current,action)});};
  const undo=()=>{if(!game||past.length===0)return;const prev=past[past.length-1];setFuture(f=>[game,...f]);setPast(p=>p.slice(0,-1));setGame(prev)};
  const redo=()=>{if(!game||future.length===0)return;const next=future[0];setPast(p=>[...p,game]);setFuture(f=>f.slice(1));setGame(next)};
+ const quitGame=()=>{clearGame();router.replace('/')};
  const human=game?.players.find(p=>p.id==='player'); const ai=game?.players.find(p=>p.isAI);
  const eligible=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&!c.tapped&&!c.summoningSick&&!c.combatDisabled)??[],[human]);
  const combatUnavailableIds=useMemo(()=>human?.battlefield.filter(c=>c.basePower!==undefined&&(c.tapped||c.summoningSick||c.combatDisabled)).map(c=>c.instanceId)??[],[human]);
@@ -47,7 +48,7 @@ export function GameClient() {
  const counterPendingWithPlayerSpell=()=>{if(!game.pendingAIAction)return;dispatch({type:'COUNTER_AI_ACTION'});};
 
  return <main className="mx-auto min-h-screen w-[94vw] max-w-[1680px] pb-5 pt-3 sm:w-[92vw]">
-  <header className="flex items-center justify-between py-2"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
+  <header className="flex items-center justify-between py-2"><div className="flex items-center gap-1"><button onClick={()=>router.push('/')} className="rounded-xl px-2 py-2 text-sm font-bold text-zinc-400">← Home</button><button onClick={quitGame} className="rounded-xl border border-red-400/20 bg-red-400/[.06] px-2.5 py-2 text-xs font-black uppercase tracking-wide text-red-200">Quit Game</button></div><div className="text-center"><div className="text-sm font-black">MTG Practice Table</div><div className="text-[10px] uppercase tracking-widest text-zinc-500">{game.settings.difficulty} AI</div></div><div className="flex gap-1"><button onClick={undo} disabled={!past.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Undo</button><button onClick={redo} disabled={!future.length} className="rounded-lg bg-white/5 px-2 py-2 text-xs disabled:opacity-30">Redo</button></div></header>
 
   <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)] xl:items-stretch xl:gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(400px,0.8fr)]">
    <div className="min-w-0 space-y-3">
