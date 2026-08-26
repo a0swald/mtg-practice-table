@@ -2,6 +2,7 @@ import type { CardDefinition, CardInstance, Zone } from '@/types/card';
 import type { CombatBlock, GameState, PendingCombat } from '@/types/game';
 import { continueAITurn, runAITurn } from '@/lib/ai/turn';
 import { createCardInstance, createToken, uid } from './utils';
+import { parseSimpleOracleEffects } from './oracleEffects';
 
 export type BlockAssignment = {
   attackerId: string;
@@ -58,6 +59,21 @@ function finishAIContinuation(game: GameState, aiId: string): GameState {
   return continued.pendingCombat ? continued : startPlayerTurn(continued);
 }
 
+function drawAICards(game: GameState, aiId: string, count: number): number {
+  const ai = game.players.find(player => player.id === aiId);
+  if (!ai || count <= 0) return 0;
+  let drawn = 0;
+  for (let index = 0; index < count; index += 1) {
+    const card = ai.aiLibrary?.shift();
+    if (!card) break;
+    ai.aiHand?.push(card);
+    drawn += 1;
+  }
+  ai.handCount = ai.aiHand?.length ?? ai.handCount + drawn;
+  ai.libraryCount = ai.aiLibrary?.length ?? ai.libraryCount;
+  return drawn;
+}
+
 function cardPower(card: CardInstance): number {
   return (card.basePower ?? 0) + card.plusOneCounters - card.minusOneCounters + card.temporaryPowerModifier;
 }
@@ -74,13 +90,14 @@ function moveLethalCreatures(game: GameState) {
   game.players.forEach(player => {
     const survivors: CardInstance[] = [];
     player.battlefield.forEach(card => {
-      const isCreature = card.baseToughness !== undefined;
-      const lethal = isCreature && card.damageMarked >= cardToughness(card);
+      const lethal = card.baseToughness !== undefined && card.damageMarked >= cardToughness(card);
       if (lethal) {
         card.zone = 'graveyard';
         player.graveyard.push(card);
         withLog(game, 'Combat', `${card.name} was destroyed by lethal damage.`);
-      } else survivors.push(card);
+      } else {
+        survivors.push(card);
+      }
     });
     player.battlefield = survivors;
   });
@@ -90,7 +107,7 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
   const defender = game.players.find(player => player.id === defenderId);
   if (!defender?.isAI) return [];
 
-  const available = defender.battlefield.filter(card => card.basePower !== undefined && !card.tapped);
+  const available = defender.battlefield.filter(card => card.basePower !== undefined && !card.tapped && !card.combatDisabled);
   if (!available.length) return [];
 
   const used = new Set<string>();
@@ -112,7 +129,6 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
       const blockerDies = aPower + blocker.damageMarked >= bToughness;
       const profitable = attackerDies && !blockerDies;
       const trade = attackerDies && blockerDies;
-      const badBlock = !attackerDies && blockerDies;
       const valueSwing = creatureValue(attacker) - creatureValue(blocker);
       let score = 0;
       if (profitable) score += 100 + valueSwing;
@@ -120,8 +136,6 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
       else if (!blockerDies) score += lifePressure ? 35 : 12;
       else if (lifePressure) score += 10;
       else score -= 80;
-      if (game.settings.difficulty === 'learning' && badBlock && !lifePressure) score -= 30;
-      if (game.settings.difficulty === 'challenging' && attackerDies) score += 15;
       return { blocker, score, attackerDies, blockerDies, profitable, trade };
     }).sort((a, b) => b.score - a.score);
 
@@ -136,7 +150,17 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
     else if (lifePressure) reason = 'Life total is under pressure, so the AI is willing to block defensively.';
     else if (!best.blockerDies) reason = `${blocker.name} can absorb the attack and survive.`;
 
-    assignments.push({ attackerId: attacker.instanceId, blockerId: blocker.instanceId, attackerName: attacker.name, blockerName: blocker.name, attackerPower: aPower, attackerToughness: aToughness, blockerPower: cardPower(blocker), blockerToughness: cardToughness(blocker), reason });
+    assignments.push({
+      attackerId: attacker.instanceId,
+      blockerId: blocker.instanceId,
+      attackerName: attacker.name,
+      blockerName: blocker.name,
+      attackerPower: aPower,
+      attackerToughness: aToughness,
+      blockerPower: cardPower(blocker),
+      blockerToughness: cardToughness(blocker),
+      reason,
+    });
   }
 
   return assignments;
@@ -152,13 +176,16 @@ function resolvePlayerBlocks(game: GameState, combat: PendingCombat) {
     const attacker = attackerPlayer.battlefield.find(card => card.instanceId === block.attackerId);
     const blocker = defender.battlefield.find(card => card.instanceId === block.blockerId);
     if (!attacker || !blocker) return;
-    const damageToAttacker = cardPower(blocker);
-    const damageToBlocker = cardPower(attacker);
-    attacker.damageMarked += damageToAttacker;
-    blocker.damageMarked += damageToBlocker;
-    withLog(game, 'Combat', `${block.blockerName} blocked ${block.attackerName}: ${damageToAttacker} damage to attacker, ${damageToBlocker} damage to blocker.`);
+    attacker.damageMarked += cardPower(blocker);
+    blocker.damageMarked += cardPower(attacker);
+    withLog(game, 'Combat', `${block.blockerName} blocked ${block.attackerName}: ${cardPower(blocker)} damage to attacker, ${cardPower(attacker)} damage to blocker.`);
   });
   moveLethalCreatures(game);
+}
+
+function isNonlandSpell(card: CardInstance): boolean {
+  const typeLine = card.definition?.typeLine.toLowerCase() ?? '';
+  return Boolean(card.definition) && !typeLine.includes('land');
 }
 
 export function reduceGame(input: GameState, action: GameAction): GameState {
@@ -180,7 +207,8 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
       if (action.card.zone === 'battlefield') player.battlefield.push(action.card);
       else if (action.card.zone === 'graveyard') player.graveyard.push(action.card);
       else if (action.card.zone === 'exile') player.exile.push(action.card);
-      withLog(game, player.name, `Added ${action.card.name} to ${action.card.zone}.`);
+      if (player.id === game.activePlayerId && isNonlandSpell(action.card)) game.spellsCastThisTurn += 1;
+      withLog(game, player.name, `${isNonlandSpell(action.card) ? 'Cast' : 'Added'} ${action.card.name} to ${action.card.zone}.`);
     }
   }
 
@@ -220,12 +248,12 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
   if (action.type === 'PLAYER_ATTACK') {
     const player = getPlayer('player');
     if (player) {
-      const cards = player.battlefield.filter(card => action.attackerIds.includes(card.instanceId));
+      const cards = player.battlefield.filter(card => action.attackerIds.includes(card.instanceId) && !card.combatDisabled);
       cards.forEach(card => { card.tapped = true; });
       const aiBlocks = chooseAIBlocks(game, cards, action.defenderId);
       const blockedIds = new Set(aiBlocks.map(block => block.attackerId));
       const unblockedTotal = cards.filter(card => !blockedIds.has(card.instanceId)).reduce((sum, card) => sum + cardPower(card), 0);
-      game.pendingCombat = { attackerId: player.id, defenderId: action.defenderId, attackerInstanceIds: action.attackerIds, totalPower: unblockedTotal, source: 'player', aiBlocks };
+      game.pendingCombat = { attackerId: player.id, defenderId: action.defenderId, attackerInstanceIds: cards.map(card => card.instanceId), totalPower: unblockedTotal, source: 'player', aiBlocks };
       withLog(game, player.name, `Declared ${cards.length} attacker${cards.length === 1 ? '' : 's'}.`);
       if (aiBlocks.length) aiBlocks.forEach(block => withLog(game, 'Opponent', `${block.blockerName} blocks ${block.attackerName}.`));
       else withLog(game, 'Opponent', 'No blocks declared.');
@@ -239,32 +267,65 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
     game.pendingAIAction = undefined;
 
     if (ai) {
+      const oracleText = action.definition?.oracleText ?? pending.oracleText;
+      const effects = parseSimpleOracleEffects(oracleText);
+
       if (pending.kind === 'creature') {
-        const card = action.definition
-          ? createCardInstance(action.definition, ai.id, 'battlefield')
-          : createToken(ai.id, pending.cardName, pending.power, pending.toughness);
+        const card = action.definition ? createCardInstance(action.definition, ai.id, 'battlefield') : createToken(ai.id, pending.cardName, pending.power, pending.toughness);
         card.summoningSick = true;
         ai.battlefield.push(card);
         withLog(game, ai.name, `${pending.cardName} resolved and entered the battlefield.`);
+        if (effects.entersDrawCards > 0) {
+          const drawn = drawAICards(game, ai.id, effects.entersDrawCards);
+          withLog(game, ai.name, `${pending.cardName} triggered; drew ${drawn} card${drawn === 1 ? '' : 's'}.`);
+        }
       } else if (pending.kind === 'ramp') {
-        const card = action.definition
-          ? createCardInstance(action.definition, ai.id, 'battlefield')
-          : createToken(ai.id, pending.cardName);
+        const card = action.definition ? createCardInstance(action.definition, ai.id, 'battlefield') : createToken(ai.id, pending.cardName);
         card.summoningSick = false;
         ai.battlefield.push(card);
-        withLog(game, ai.name, `${pending.cardName} resolved.`);
+        withLog(game, ai.name, `${pending.cardName} resolved and entered the battlefield.`);
       } else if (pending.kind === 'draw') {
-        ai.handCount += pending.amount ?? 2;
-        withLog(game, ai.name, `${pending.cardName} resolved; drew ${pending.amount ?? 2} cards.`);
+        const requested = effects.drawCards || pending.amount || 0;
+        const drawn = drawAICards(game, ai.id, requested);
+        withLog(game, ai.name, `${pending.cardName} resolved; drew ${drawn} card${drawn === 1 ? '' : 's'}.`);
+        if (effects.loseLife > 0) {
+          const old = ai.life;
+          ai.life -= effects.loseLife;
+          withLog(game, ai.name, `${pending.cardName}: lost ${effects.loseLife} life (${old} → ${ai.life}).`);
+        }
+        if (effects.gainLife > 0) {
+          const old = ai.life;
+          ai.life += effects.gainLife;
+          withLog(game, ai.name, `${pending.cardName}: gained ${effects.gainLife} life (${old} → ${ai.life}).`);
+        }
+        if (action.definition) {
+          const spell = createCardInstance(action.definition, ai.id, 'graveyard');
+          ai.graveyard.push(spell);
+        }
       } else if (pending.kind === 'removal' && human && pending.targetInstanceId) {
-        const index = human.battlefield.findIndex(card => card.instanceId === pending.targetInstanceId);
-        if (index >= 0) {
+        const target = human.battlefield.find(card => card.instanceId === pending.targetInstanceId);
+        if (!target) {
+          withLog(game, ai.name, `${pending.cardName} resolved, but its target was no longer available.`);
+        } else if (effects.disablesAttackAndBlock) {
+          target.combatDisabled = true;
+          target.combatDisabledBy = pending.cardName;
+          if (action.definition) {
+            const aura = createCardInstance(action.definition, ai.id, 'battlefield');
+            aura.summoningSick = false;
+            ai.battlefield.push(aura);
+          }
+          withLog(game, ai.name, `${pending.cardName} enchanted ${target.name}; it can't attack or block.`);
+        } else if (effects.destroysCreature || effects.destroysNonartifactCreature || effects.destroysNonblackCreature || effects.destroysArtifactOrEnchantment) {
+          const index = human.battlefield.findIndex(card => card.instanceId === target.instanceId);
           const [destroyed] = human.battlefield.splice(index, 1);
           destroyed.zone = 'graveyard';
           human.graveyard.push(destroyed);
           withLog(game, ai.name, `${pending.cardName} resolved; destroyed ${destroyed.name}.`);
+          if (action.definition && action.definition.typeLine.toLowerCase().includes('instant')) {
+            ai.graveyard.push(createCardInstance(action.definition, ai.id, 'graveyard'));
+          }
         } else {
-          withLog(game, ai.name, `${pending.cardName} resolved, but its target was no longer available.`);
+          withLog(game, ai.name, `${pending.cardName} resolved. Its effect is not yet automated, so no incorrect destroy action was applied.`);
         }
       }
       return finishAIContinuation(game, ai.id);
@@ -308,17 +369,15 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
         const attacker = attackerPlayer.battlefield.find(card => card.instanceId === attackerId);
         if (!attacker) return;
         const blockerId = assignmentByAttacker.get(attackerId);
-        const blocker = blockerId ? human.battlefield.find(card => card.instanceId === blockerId) : undefined;
+        const blocker = blockerId ? human.battlefield.find(card => card.instanceId === blockerId && !card.combatDisabled) : undefined;
         if (!blocker) {
           unblockedDamage += cardPower(attacker);
           withLog(game, 'Combat', `${attacker.name} was unblocked for ${cardPower(attacker)} damage.`);
           return;
         }
-        const attackerDamage = cardPower(blocker);
-        const blockerDamage = cardPower(attacker);
-        attacker.damageMarked += attackerDamage;
-        blocker.damageMarked += blockerDamage;
-        withLog(game, 'Combat', `${blocker.name} blocked ${attacker.name}: ${attackerDamage} damage to attacker, ${blockerDamage} damage to blocker.`);
+        attacker.damageMarked += cardPower(blocker);
+        blocker.damageMarked += cardPower(attacker);
+        withLog(game, 'Combat', `${blocker.name} blocked ${attacker.name}: ${cardPower(blocker)} damage to attacker, ${cardPower(attacker)} damage to blocker.`);
       });
       if (unblockedDamage > 0) {
         const old = human.life;
