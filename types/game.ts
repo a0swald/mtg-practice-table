@@ -1,4 +1,5 @@
 import type { CardInstance } from './card';
+import type { AICardTemplate } from './ai';
 
 export type Difficulty = 'learning' | 'casual' | 'challenging';
 export type Phase = 'Untap' | 'Upkeep' | 'Draw' | 'Main 1' | 'Combat' | 'Main 2' | 'End' | 'Cleanup';
@@ -17,6 +18,9 @@ export interface PlayerState {
   commanderTax: number;
   commanderDamage: Record<string, number>;
   availableMana?: number;
+  aiLibrary?: AICardTemplate[];
+  aiHand?: AICardTemplate[];
+  aiLandsPlayed?: number;
 }
 
 export interface LogEntry { id: string; turn: number; actor: string; message: string; }
