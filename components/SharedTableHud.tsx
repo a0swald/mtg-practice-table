@@ -19,6 +19,7 @@ type HudPayload = { code: string; playerId: string; players: HudPlayer[] };
 const HUD_KEY = 'mtg-practice-shared-table-hud-v1';
 const HUD_EVENT = 'mtg-practice:shared-table-hud';
 const MENU_GAP = 4;
+const EDGE_GAP = 8;
 
 function readHud(): HudPayload | null {
   try {
@@ -68,14 +69,57 @@ export default function SharedTableHud() {
 
       if (wrapper && inner && menuButton) {
         const menuRect = menuButton.getBoundingClientRect();
-        const availableWidth = Math.max(76, menuRect.left - MENU_GAP - 8);
-        inner.style.maxWidth = `${availableWidth}px`;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
 
-        const hudWidth = Math.min(inner.scrollWidth, availableWidth);
-        wrapper.style.left = `${Math.max(4, menuRect.left - MENU_GAP - hudWidth)}px`;
-        wrapper.style.top = `${menuRect.top}px`;
-        wrapper.style.width = `${hudWidth}px`;
-        wrapper.style.height = `${menuRect.height}px`;
+        const availableLength = rotation === 0
+          ? menuRect.left - MENU_GAP - EDGE_GAP
+          : rotation === 90
+            ? menuRect.top - MENU_GAP - EDGE_GAP
+            : rotation === 180
+              ? viewportWidth - menuRect.right - MENU_GAP - EDGE_GAP
+              : viewportHeight - menuRect.bottom - MENU_GAP - EDGE_GAP;
+
+        inner.style.maxWidth = `${Math.max(84, availableLength)}px`;
+
+        const innerWidth = Math.min(inner.scrollWidth, Math.max(84, availableLength));
+        const innerHeight = menuRect.height;
+        const sideways = rotation === 90 || rotation === 270;
+        const visualWidth = sideways ? innerHeight : innerWidth;
+        const visualHeight = sideways ? innerWidth : innerHeight;
+        const menuCenterX = menuRect.left + menuRect.width / 2;
+        const menuCenterY = menuRect.top + menuRect.height / 2;
+
+        let left = 0;
+        let top = 0;
+
+        if (rotation === 0) {
+          left = menuRect.left - MENU_GAP - visualWidth;
+          top = menuCenterY - visualHeight / 2;
+        } else if (rotation === 90) {
+          // Player-left is physically above the menu.
+          left = menuCenterX - visualWidth / 2;
+          top = menuRect.top - MENU_GAP - visualHeight;
+        } else if (rotation === 180) {
+          // Player-left is physically right of the menu.
+          left = menuRect.right + MENU_GAP;
+          top = menuCenterY - visualHeight / 2;
+        } else {
+          // Player-left is physically below the menu.
+          left = menuCenterX - visualWidth / 2;
+          top = menuRect.bottom + MENU_GAP;
+        }
+
+        wrapper.style.left = `${left}px`;
+        wrapper.style.top = `${top}px`;
+        wrapper.style.width = `${visualWidth}px`;
+        wrapper.style.height = `${visualHeight}px`;
+
+        inner.style.width = `${innerWidth}px`;
+        inner.style.height = `${innerHeight}px`;
+        inner.style.left = '50%';
+        inner.style.top = '50%';
+        inner.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
 
         const cardTransform = playerCard ? window.getComputedStyle(playerCard).transform : 'none';
         wrapper.style.transform = cardTransform === 'none' ? '' : cardTransform;
@@ -86,36 +130,29 @@ export default function SharedTableHud() {
 
     frame = window.requestAnimationFrame(placeHud);
     return () => window.cancelAnimationFrame(frame);
-  }, [isUtility, others.length, you]);
+  }, [isUtility, others.length, rotation, you]);
 
   if (!isUtility || !hud || !you || others.length === 0) return null;
 
   return (
     <div ref={wrapperRef} className="pointer-events-none fixed z-30 transition-transform duration-200">
-      <div ref={innerRef} className="flex h-14 w-max max-w-full items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
+      <div ref={innerRef} className="absolute flex h-14 w-max items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
-          <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center justify-center rounded-xl bg-white/[.08] px-2">
-            <div
-              className="flex items-center gap-2"
-              style={{ transform: `rotate(${rotation}deg)` }}
-            >
-              <div className="flex w-4 shrink-0 flex-col items-center justify-center gap-1">
-                <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
-                {player.connected ? <Wifi size={11} className="text-emerald-300" /> : <WifiOff size={11} className="text-red-300" />}
+          <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5">
+            <div className="flex h-full w-4 shrink-0 flex-col items-center justify-center gap-1">
+              <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
+              {player.connected ? <Wifi size={11} className="text-emerald-300" /> : <WifiOff size={11} className="text-red-300" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-white/70">
+                <span className="max-w-[64px] truncate">{player.name}</span>
+                {player.host && <Crown size={10} />}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-white/70">
-                  <span className="max-w-[64px] truncate">{player.name}</span>
-                  {player.host && <Crown size={10} />}
-                </div>
-                <div className="text-xl font-black leading-none tabular-nums text-white">{player.life}</div>
-              </div>
+              <div className="text-xl font-black leading-none tabular-nums text-white">{player.life}</div>
             </div>
           </div>
         ))}
-        <div className="flex h-full shrink-0 items-center justify-center px-1.5">
-          <span style={{ transform: `rotate(${rotation}deg)` }} className="text-[8px] font-black tracking-[.16em] text-white/35">{hud.code}</span>
-        </div>
+        <div className="flex h-full shrink-0 items-center px-1.5 text-[8px] font-black tracking-[.16em] text-white/35">{hud.code}</div>
       </div>
     </div>
   );
