@@ -1,7 +1,7 @@
 'use client';
 
 import { Crown, Wifi, WifiOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Facing = 'auto' | 0 | 90 | 180 | 270;
 type HudPlayer = {
@@ -36,6 +36,7 @@ function rotationFor(player: HudPlayer | undefined) {
 export default function SharedTableHud() {
   const [hud, setHud] = useState<HudPayload | null>(null);
   const [isUtility, setIsUtility] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsUtility(window.location.pathname.startsWith('/utility'));
@@ -49,6 +50,29 @@ export default function SharedTableHud() {
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isUtility) return;
+    let frame = 0;
+    let lastTransform = '';
+
+    const syncWithPlayerCard = () => {
+      const wrapper = wrapperRef.current;
+      const playerCard = document.querySelector<HTMLElement>('[data-drag]');
+      if (wrapper && playerCard) {
+        const computed = window.getComputedStyle(playerCard).transform;
+        const nextTransform = computed === 'none' ? '' : computed;
+        if (nextTransform !== lastTransform) {
+          wrapper.style.transform = nextTransform;
+          lastTransform = nextTransform;
+        }
+      }
+      frame = window.requestAnimationFrame(syncWithPlayerCard);
+    };
+
+    frame = window.requestAnimationFrame(syncWithPlayerCard);
+    return () => window.cancelAnimationFrame(frame);
+  }, [isUtility]);
 
   const you = useMemo(() => hud?.players.find(player => player.you), [hud]);
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
@@ -64,7 +88,7 @@ export default function SharedTableHud() {
         : 'left-[max(env(safe-area-inset-left),.75rem)] bottom-[max(env(safe-area-inset-bottom),.75rem)] origin-bottom-left';
 
   return (
-    <div className={`pointer-events-none fixed z-30 ${position}`}>
+    <div ref={wrapperRef} className={`pointer-events-none fixed z-30 ${position}`}>
       <div style={{ transform: `rotate(${rotation}deg)` }} className="flex max-w-[78vw] items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1.5 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
           <div key={player.id} className="flex min-w-[76px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5 py-2">
