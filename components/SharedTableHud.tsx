@@ -1,7 +1,7 @@
 'use client';
 
 import { Crown, Wifi, WifiOff } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 type Facing = 'auto' | 0 | 90 | 180 | 270;
 type HudPlayer = {
@@ -20,6 +20,8 @@ const HUD_KEY = 'mtg-practice-shared-table-hud-v1';
 const HUD_EVENT = 'mtg-practice:shared-table-hud';
 const MENU_GAP = 4;
 const EDGE_GAP = 8;
+const CHIP_WIDTH = 88;
+const CODE_WIDTH = 42;
 
 function readHud(): HudPayload | null {
   try {
@@ -39,6 +41,7 @@ export default function SharedTableHud() {
   const [isUtility, setIsUtility] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
+  const baseCardRectRef = useRef<DOMRect | null>(null);
 
   useEffect(() => {
     setIsUtility(window.location.pathname.startsWith('/utility'));
@@ -57,92 +60,107 @@ export default function SharedTableHud() {
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
   const rotation = facingRotation(you);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isUtility || !you || others.length === 0) return;
-    let frame = 0;
 
-    const placeHud = () => {
+    let settleTimer = 0;
+
+    const measure = () => {
       const wrapper = wrapperRef.current;
       const inner = innerRef.current;
       const menuButton = document.querySelector<HTMLElement>('button[aria-label="Open table menu"]');
       const playerCard = document.querySelector<HTMLElement>('[data-drag]');
+      if (!wrapper || !inner || !menuButton) return;
 
-      if (wrapper && inner && menuButton) {
-        const menuRect = menuButton.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+      const menuRect = menuButton.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = document.documentElement.clientHeight;
 
-        const availableLength = rotation === 0
-          ? menuRect.left - MENU_GAP - EDGE_GAP
-          : rotation === 90
-            ? menuRect.top - MENU_GAP - EDGE_GAP
-            : rotation === 180
-              ? viewportWidth - menuRect.right - MENU_GAP - EDGE_GAP
-              : viewportHeight - menuRect.bottom - MENU_GAP - EDGE_GAP;
+      const availableLength = rotation === 0
+        ? menuRect.left - MENU_GAP - EDGE_GAP
+        : rotation === 90
+          ? menuRect.top - MENU_GAP - EDGE_GAP
+          : rotation === 180
+            ? viewportWidth - menuRect.right - MENU_GAP - EDGE_GAP
+            : viewportHeight - menuRect.bottom - MENU_GAP - EDGE_GAP;
 
-        const maxLength = Math.max(84, availableLength);
-        inner.style.maxWidth = `${maxLength}px`;
+      // Use deterministic content width rather than scrollWidth. On mobile,
+      // measuring scrollWidth while also mutating max-width can create a feedback loop.
+      const desiredLength = others.length * CHIP_WIDTH + CODE_WIDTH + 10;
+      const innerWidth = Math.max(84, Math.min(desiredLength, availableLength));
+      const innerHeight = menuRect.height;
+      const sideways = rotation === 90 || rotation === 270;
+      const visualWidth = sideways ? innerHeight : innerWidth;
+      const visualHeight = sideways ? innerWidth : innerHeight;
+      const menuCenterX = menuRect.left + menuRect.width / 2;
+      const menuCenterY = menuRect.top + menuRect.height / 2;
 
-        const innerWidth = Math.min(inner.scrollWidth, maxLength);
-        const innerHeight = menuRect.height;
-        const sideways = rotation === 90 || rotation === 270;
-        const visualWidth = sideways ? innerHeight : innerWidth;
-        const visualHeight = sideways ? innerWidth : innerHeight;
-        const menuCenterX = menuRect.left + menuRect.width / 2;
-        const menuCenterY = menuRect.top + menuRect.height / 2;
+      let left: number;
+      let top: number;
 
-        let left = 0;
-        let top = 0;
+      if (rotation === 0) {
+        left = menuRect.left - MENU_GAP - visualWidth;
+        top = menuCenterY - visualHeight / 2;
+      } else if (rotation === 90) {
+        left = menuCenterX - visualWidth / 2;
+        top = menuRect.top - MENU_GAP - visualHeight;
+      } else if (rotation === 180) {
+        left = menuRect.right + MENU_GAP;
+        top = menuCenterY - visualHeight / 2;
+      } else {
+        left = menuCenterX - visualWidth / 2;
+        top = menuRect.bottom + MENU_GAP;
+      }
 
-        if (rotation === 0) {
-          left = menuRect.left - MENU_GAP - visualWidth;
-          top = menuCenterY - visualHeight / 2;
-        } else if (rotation === 90) {
-          // Player-left is physically above the menu.
-          left = menuCenterX - visualWidth / 2;
-          top = menuRect.top - MENU_GAP - visualHeight;
-        } else if (rotation === 180) {
-          // Player-left is physically right of the menu.
-          left = menuRect.right + MENU_GAP;
-          top = menuCenterY - visualHeight / 2;
-        } else {
-          // Player-left is physically below the menu.
-          left = menuCenterX - visualWidth / 2;
-          top = menuRect.bottom + MENU_GAP;
-        }
+      wrapper.style.left = `${Math.round(left)}px`;
+      wrapper.style.top = `${Math.round(top)}px`;
+      wrapper.style.width = `${Math.round(visualWidth)}px`;
+      wrapper.style.height = `${Math.round(visualHeight)}px`;
 
-        wrapper.style.left = `${left}px`;
-        wrapper.style.top = `${top}px`;
-        wrapper.style.width = `${visualWidth}px`;
-        wrapper.style.height = `${visualHeight}px`;
+      inner.style.width = `${Math.round(innerWidth)}px`;
+      inner.style.height = `${Math.round(innerHeight)}px`;
+      inner.style.left = '50%';
+      inner.style.top = '50%';
+      inner.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
 
-        inner.style.width = `${innerWidth}px`;
-        inner.style.height = `${innerHeight}px`;
-        inner.style.left = '50%';
-        inner.style.top = '50%';
-        inner.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
+      if (playerCard) baseCardRectRef.current = playerCard.getBoundingClientRect();
+    };
 
-        // Follow the player's card using its real on-screen pixel displacement.
-        // Copying the card's percentage-based CSS transform onto this much smaller
-        // HUD makes the translation scale against the HUD itself and causes jitter.
-        let dx = 0;
-        let dy = 0;
-        if (playerCard) {
-          const cardRect = playerCard.getBoundingClientRect();
-          const playerZone = playerCard.closest('article');
-          if (playerZone) {
-            const zoneRect = playerZone.getBoundingClientRect();
-            dx = cardRect.left - zoneRect.left;
-            dy = cardRect.top - zoneRect.top;
-          }
-        }
+    // First frame catches the new menu/orientation position; the delayed pass
+    // catches the end of the menu button's CSS transition without continuously measuring.
+    const frame = window.requestAnimationFrame(measure);
+    settleTimer = window.setTimeout(measure, 240);
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
+  }, [isUtility, others.length, rotation, you]);
+
+  useEffect(() => {
+    if (!isUtility || !you || others.length === 0) return;
+    let frame = 0;
+
+    const followCard = () => {
+      const wrapper = wrapperRef.current;
+      const playerCard = document.querySelector<HTMLElement>('[data-drag]');
+      const baseRect = baseCardRectRef.current;
+
+      if (wrapper && playerCard && baseRect) {
+        const rect = playerCard.getBoundingClientRect();
+        const dx = Math.round((rect.left - baseRect.left) * 10) / 10;
+        const dy = Math.round((rect.top - baseRect.top) * 10) / 10;
         wrapper.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       }
 
-      frame = window.requestAnimationFrame(placeHud);
+      frame = window.requestAnimationFrame(followCard);
     };
 
-    frame = window.requestAnimationFrame(placeHud);
+    frame = window.requestAnimationFrame(followCard);
     return () => window.cancelAnimationFrame(frame);
   }, [isUtility, others.length, rotation, you]);
 
@@ -150,7 +168,7 @@ export default function SharedTableHud() {
 
   return (
     <div ref={wrapperRef} className="pointer-events-none fixed z-30 will-change-transform">
-      <div ref={innerRef} className="absolute flex h-14 w-max items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
+      <div ref={innerRef} className="absolute flex h-14 items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
           <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5">
             <div className="flex h-full w-4 shrink-0 flex-col items-center justify-center gap-1">
