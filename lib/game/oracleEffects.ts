@@ -7,6 +7,7 @@ export interface SimpleOracleEffects {
   destroysArtifactOrEnchantment: boolean;
   destroysNonartifactCreature: boolean;
   destroysNonblackCreature: boolean;
+  disablesAttackAndBlock: boolean;
   entersDrawCards: number;
 }
 
@@ -47,6 +48,7 @@ export function parseSimpleOracleEffects(oracleText?: string): SimpleOracleEffec
     destroysArtifactOrEnchantment: text.includes('destroy target artifact or enchantment'),
     destroysNonartifactCreature: text.includes('destroy target nonartifact creature'),
     destroysNonblackCreature: text.includes('destroy target nonblack creature'),
+    disablesAttackAndBlock: text.includes("can't attack or block") || text.includes('cannot attack or block'),
     entersDrawCards: numberFrom(entersDrawMatch?.[1]),
   };
 }
