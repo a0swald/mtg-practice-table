@@ -38,6 +38,8 @@ export interface CardInstance {
   temporaryToughnessModifier: number;
   customCounters: CustomCounter[];
   summoningSick?: boolean;
+  combatDisabled?: boolean;
+  combatDisabledBy?: string;
   token?: boolean;
   tokenQuantity?: number;
   ownerId: string;
