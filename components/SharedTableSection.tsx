@@ -39,7 +39,9 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
       setColor(current => current && next.includes(current.toLowerCase()) ? '' : current);
       socket.disconnect();
     });
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, [code, mode]);
 
   function resetSetup() {
