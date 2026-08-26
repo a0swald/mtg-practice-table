@@ -7,10 +7,25 @@ function aiTurnNumber(globalTurn: number): number {
   return Math.max(1, Math.ceil(globalTurn / 2));
 }
 
+function oracleWeight(card: CardInstance): number {
+  const text = card.definition?.oracleText?.toLowerCase() ?? '';
+  let score = 0;
+  if (text.includes('draw')) score += 5;
+  if (text.includes('whenever')) score += 4;
+  if (text.includes('each opponent')) score += 5;
+  if (text.includes('damage')) score += 4;
+  if (text.includes('flying')) score += 2;
+  if (text.includes('deathtouch')) score += 3;
+  if (text.includes('lifelink')) score += 2;
+  if (text.includes('create')) score += 3;
+  if (text.includes("can't attack you unless")) score += 7;
+  return score;
+}
+
 function scoreCreature(card: CardInstance): number {
   const stats = currentStats(card);
-  if (!stats) return 0;
-  return stats.power * 2 + stats.toughness + card.plusOneCounters * 2;
+  if (!stats) return oracleWeight(card);
+  return stats.power * 2 + stats.toughness + card.plusOneCounters * 2 + oracleWeight(card);
 }
 
 function chooseCreature(turn: number, mana: number, battlefield: CardInstance[]) {
@@ -38,7 +53,6 @@ function attackTaxPerCreature(humanBattlefield: CardInstance[]): { amount: numbe
   humanBattlefield.forEach(card => {
     const oracle = card.definition?.oracleText?.toLowerCase() ?? '';
     if (!oracle.includes("can't attack you unless") || !oracle.includes('for each creature')) return;
-
     const match = oracle.match(/pays \{(\d+)\}/);
     const tax = match ? Number.parseInt(match[1], 10) : 0;
     if (tax > 0) {
@@ -53,13 +67,7 @@ function attackTaxPerCreature(humanBattlefield: CardInstance[]): { amount: numbe
 function shouldPayAttackTax(game: GameState, ai: NonNullable<GameState['players'][number]>, humanLife: number, totalPotentialPower: number, sourceNames: string[]): boolean {
   if (totalPotentialPower >= humanLife) return true;
   if (humanLife <= 6) return true;
-
-  const threshold = game.settings.difficulty === 'learning'
-    ? 0.4
-    : game.settings.difficulty === 'casual'
-      ? 0.65
-      : 0.85;
-
+  const threshold = game.settings.difficulty === 'learning' ? 0.4 : game.settings.difficulty === 'casual' ? 0.65 : 0.85;
   const seed = `${game.id}:${game.turnNumber}:${ai.id}:${ai.life}:${humanLife}:${ai.handCount}:${sourceNames.join('|')}`;
   return deterministicRoll(seed) < threshold;
 }
@@ -81,10 +89,7 @@ function beginCombat(game: GameState, aiId: string): GameState {
       const safeAttackers = attackers.filter(card => (currentStats(card)?.power ?? 0) >= 2 || humanCreatures.length === 0);
       chosen = safeAttackers.slice(0, Math.min(2, safeAttackers.length));
     } else {
-      chosen = attackers
-        .slice()
-        .sort((a, b) => scoreCreature(b) - scoreCreature(a))
-        .filter((card, index) => human.life <= 8 || index < Math.max(1, attackers.length - 1));
+      chosen = attackers.slice().sort((a, b) => scoreCreature(b) - scoreCreature(a)).filter((card, index) => human.life <= 8 || index < Math.max(1, attackers.length - 1));
     }
   }
 
@@ -96,40 +101,20 @@ function beginCombat(game: GameState, aiId: string): GameState {
     const willingToPay = shouldPayAttackTax(game, ai, human.life, potentialPower, attackTax.sources);
 
     if (!willingToPay || maxTaxedAttackers <= 0) {
-      game.log.push({
-        id: uid(),
-        turn: game.turnNumber,
-        actor: ai.name,
-        message: `${attackTax.sources.join(' + ')} requires ${attackTax.amount} mana per attacker. ${ai.name} chose not to pay and did not attack.`,
-      });
+      game.log.push({ id: uid(), turn: game.turnNumber, actor: ai.name, message: `${attackTax.sources.join(' + ')} requires ${attackTax.amount} mana per attacker. ${ai.name} chose not to pay and did not attack.` });
       chosen = [];
     } else {
-      chosen = chosen
-        .slice()
-        .sort((a, b) => scoreCreature(b) - scoreCreature(a))
-        .slice(0, maxTaxedAttackers);
-
+      chosen = chosen.slice().sort((a, b) => scoreCreature(b) - scoreCreature(a)).slice(0, maxTaxedAttackers);
       const taxPaid = chosen.length * attackTax.amount;
       ai.availableMana = Math.max(0, manaAvailable - taxPaid);
-      game.log.push({
-        id: uid(),
-        turn: game.turnNumber,
-        actor: ai.name,
-        message: `${attackTax.sources.join(' + ')} taxes attacks. ${ai.name} paid ${taxPaid} mana for ${chosen.length} attacker${chosen.length === 1 ? '' : 's'}.`,
-      });
+      game.log.push({ id: uid(), turn: game.turnNumber, actor: ai.name, message: `${attackTax.sources.join(' + ')} taxes attacks. ${ai.name} paid ${taxPaid} mana for ${chosen.length} attacker${chosen.length === 1 ? '' : 's'}.` });
     }
   }
 
   if (chosen.length) {
     chosen.forEach(card => { card.tapped = true; });
     const totalPower = chosen.reduce((sum, card) => sum + (currentStats(card)?.power ?? 0), 0);
-    game.pendingCombat = {
-      attackerId: ai.id,
-      defenderId: human.id,
-      attackerInstanceIds: chosen.map(card => card.instanceId),
-      totalPower,
-      source: 'ai',
-    };
+    game.pendingCombat = { attackerId: ai.id, defenderId: human.id, attackerInstanceIds: chosen.map(card => card.instanceId), totalPower, source: 'ai' };
     game.log.push({ id: uid(), turn: game.turnNumber, actor: ai.name, message: `Attacks for ${totalPower}.` });
   } else {
     game.log.push({ id: uid(), turn: game.turnNumber, actor: ai.name, message: 'Passed combat.' });
@@ -150,15 +135,13 @@ export function runAITurn(input: GameState, aiId: string): GameState {
   if (!ai || !human) return game;
 
   const turn = aiTurnNumber(game.turnNumber);
-
   ai.battlefield.forEach(card => {
     card.tapped = false;
     if (card.summoningSick) card.summoningSick = false;
   });
-
   ai.handCount += 1;
 
-  const rampCount = ai.battlefield.filter(card => card.name === 'Mana Stone').length;
+  const rampCount = ai.battlefield.filter(card => card.name === 'Mind Stone').length;
   const landMana = Math.min(turn, 7);
   ai.availableMana = landMana + rampCount;
 
@@ -173,30 +156,15 @@ export function runAITurn(input: GameState, aiId: string): GameState {
   let pending: PendingAIAction | undefined;
 
   if (turn >= 3 && biggestThreat && removal && mana >= removal.manaCost && (pattern === 0 || game.settings.difficulty === 'challenging')) {
-    pending = {
-      aiId,
-      kind: 'removal',
-      cardName: removal.name,
-      manaCost: removal.manaCost,
-      targetInstanceId: biggestThreat.instanceId,
-      targetName: biggestThreat.name,
-    };
+    pending = { aiId, kind: 'removal', cardName: removal.name, manaCost: removal.manaCost, typeLine: removal.typeLine, oracleText: removal.oracleText, targetInstanceId: biggestThreat.instanceId, targetName: biggestThreat.name };
   } else if (turn >= 2 && ramp && mana >= ramp.manaCost && rampCount === 0 && pattern === 1) {
-    pending = { aiId, kind: 'ramp', cardName: ramp.name, manaCost: ramp.manaCost, amount: ramp.amount ?? 1 };
+    pending = { aiId, kind: 'ramp', cardName: ramp.name, manaCost: ramp.manaCost, typeLine: ramp.typeLine, oracleText: ramp.oracleText, amount: ramp.amount ?? 1 };
   } else if (turn >= 3 && draw && mana >= draw.manaCost && pattern === 2) {
-    pending = { aiId, kind: 'draw', cardName: draw.name, manaCost: draw.manaCost, amount: draw.amount ?? 2 };
+    pending = { aiId, kind: 'draw', cardName: draw.name, manaCost: draw.manaCost, typeLine: draw.typeLine, oracleText: draw.oracleText, amount: draw.amount ?? 2 };
   } else if (ai.handCount > 0 && ai.battlefield.filter(card => card.basePower !== undefined).length < 6) {
     const creature = chooseCreature(turn, mana, ai.battlefield);
     if (creature) {
-      pending = {
-        aiId,
-        kind: 'creature',
-        cardName: creature.name,
-        manaCost: creature.manaCost,
-        power: creature.power,
-        toughness: creature.toughness,
-        flying: creature.flying,
-      };
+      pending = { aiId, kind: 'creature', cardName: creature.name, manaCost: creature.manaCost, typeLine: creature.typeLine, oracleText: creature.oracleText, power: creature.power, toughness: creature.toughness, flying: creature.flying };
     }
   }
 
@@ -210,14 +178,7 @@ export function runAITurn(input: GameState, aiId: string): GameState {
   ai.availableMana = mana;
   ai.handCount = Math.max(0, ai.handCount - 1);
   game.pendingAIAction = pending;
-  game.log.push({
-    id: uid(),
-    turn: game.turnNumber,
-    actor: ai.name,
-    message: pending.kind === 'removal'
-      ? `Cast ${pending.cardName}, targeting ${pending.targetName}. Waiting for your response.`
-      : `Cast ${pending.cardName}. Waiting for your response.`,
-  });
+  game.log.push({ id: uid(), turn: game.turnNumber, actor: ai.name, message: pending.kind === 'removal' ? `Cast ${pending.cardName}, targeting ${pending.targetName}. Waiting for your response.` : `Cast ${pending.cardName}. Waiting for your response.` });
   game.updatedAt = new Date().toISOString();
   return game;
 }
