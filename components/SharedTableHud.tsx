@@ -35,8 +35,10 @@ function rotationFor(player: HudPlayer | undefined) {
 
 export default function SharedTableHud() {
   const [hud, setHud] = useState<HudPayload | null>(null);
+  const [isUtility, setIsUtility] = useState(false);
 
   useEffect(() => {
+    setIsUtility(window.location.pathname.startsWith('/utility'));
     setHud(readHud());
     const onHud = (event: Event) => setHud((event as CustomEvent<HudPayload | null>).detail ?? readHud());
     const onStorage = (event: StorageEvent) => { if (event.key === HUD_KEY) setHud(readHud()); };
@@ -50,7 +52,7 @@ export default function SharedTableHud() {
 
   const you = useMemo(() => hud?.players.find(player => player.you), [hud]);
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
-  if (!hud || !you || others.length === 0 || !window.location.pathname.startsWith('/utility')) return null;
+  if (!isUtility || !hud || !you || others.length === 0) return null;
 
   const rotation = rotationFor(you);
   const position = rotation === 0
