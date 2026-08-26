@@ -21,12 +21,25 @@ export interface PlayerState {
 
 export interface LogEntry { id: string; turn: number; actor: string; message: string; }
 
+export interface CombatBlock {
+  attackerId: string;
+  blockerId: string;
+  attackerName: string;
+  blockerName: string;
+  attackerPower: number;
+  attackerToughness: number;
+  blockerPower: number;
+  blockerToughness: number;
+  reason: string;
+}
+
 export interface PendingCombat {
   attackerId: string;
   defenderId: string;
   attackerInstanceIds: string[];
   totalPower: number;
   source: 'player' | 'ai';
+  aiBlocks?: CombatBlock[];
 }
 
 export interface PendingAIAction {
