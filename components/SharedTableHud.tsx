@@ -80,9 +80,10 @@ export default function SharedTableHud() {
               ? viewportWidth - menuRect.right - MENU_GAP - EDGE_GAP
               : viewportHeight - menuRect.bottom - MENU_GAP - EDGE_GAP;
 
-        inner.style.maxWidth = `${Math.max(84, availableLength)}px`;
+        const maxLength = Math.max(84, availableLength);
+        inner.style.maxWidth = `${maxLength}px`;
 
-        const innerWidth = Math.min(inner.scrollWidth, Math.max(84, availableLength));
+        const innerWidth = Math.min(inner.scrollWidth, maxLength);
         const innerHeight = menuRect.height;
         const sideways = rotation === 90 || rotation === 270;
         const visualWidth = sideways ? innerHeight : innerWidth;
@@ -121,8 +122,21 @@ export default function SharedTableHud() {
         inner.style.top = '50%';
         inner.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
 
-        const cardTransform = playerCard ? window.getComputedStyle(playerCard).transform : 'none';
-        wrapper.style.transform = cardTransform === 'none' ? '' : cardTransform;
+        // Follow the player's card using its real on-screen pixel displacement.
+        // Copying the card's percentage-based CSS transform onto this much smaller
+        // HUD makes the translation scale against the HUD itself and causes jitter.
+        let dx = 0;
+        let dy = 0;
+        if (playerCard) {
+          const cardRect = playerCard.getBoundingClientRect();
+          const playerZone = playerCard.closest('article');
+          if (playerZone) {
+            const zoneRect = playerZone.getBoundingClientRect();
+            dx = cardRect.left - zoneRect.left;
+            dy = cardRect.top - zoneRect.top;
+          }
+        }
+        wrapper.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       }
 
       frame = window.requestAnimationFrame(placeHud);
@@ -135,7 +149,7 @@ export default function SharedTableHud() {
   if (!isUtility || !hud || !you || others.length === 0) return null;
 
   return (
-    <div ref={wrapperRef} className="pointer-events-none fixed z-30 transition-transform duration-200">
+    <div ref={wrapperRef} className="pointer-events-none fixed z-30 will-change-transform">
       <div ref={innerRef} className="absolute flex h-14 w-max items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
           <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5">
