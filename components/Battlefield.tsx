@@ -31,18 +31,18 @@ export function Battlefield({
   const groups = groupCards(cards);
 
   return (
-    <div className="grid min-h-40 grid-cols-1 gap-3 px-1 py-4 sm:grid-cols-2">
+    <div className="min-h-40 space-y-3 px-1 py-4">
       {groups.map(group => (
         <section
           key={group.key}
-          className={`min-w-0 rounded-xl border border-white/[.07] bg-black/[.08] p-2 ${group.cards.length === 0 ? 'hidden sm:block' : ''}`}
+          className={`w-full min-w-0 rounded-xl border border-white/[.07] bg-black/[.08] p-2.5 ${group.cards.length === 0 ? 'hidden sm:block' : ''}`}
         >
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{group.label}</span>
             <span className="text-[10px] font-bold text-zinc-600">{group.cards.length}</span>
           </div>
           {group.cards.length > 0 ? (
-            <div className="scrollbar-none flex min-h-28 gap-3 overflow-x-auto px-1 pb-1 pt-1">
+            <div className="scrollbar-none flex min-h-28 w-full gap-3 overflow-x-auto px-1 pb-1 pt-1">
               {group.cards.map(card => (
                 <CardVisual
                   key={card.instanceId}
@@ -54,7 +54,7 @@ export function Battlefield({
               ))}
             </div>
           ) : (
-            <div className="flex min-h-28 items-center justify-center text-xs text-zinc-700">Empty</div>
+            <div className="flex min-h-20 items-center justify-center text-xs text-zinc-700">Empty</div>
           )}
         </section>
       ))}
