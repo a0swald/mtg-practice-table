@@ -3,6 +3,7 @@ import type { AICardTemplate } from './ai';
 
 export type Difficulty = 'learning' | 'casual' | 'challenging';
 export type Phase = 'Untap' | 'Upkeep' | 'Draw' | 'Main 1' | 'Combat' | 'Main 2' | 'End' | 'Cleanup';
+export type GameMode = 'physical' | 'virtual';
 
 export interface PlayerState {
   id: string;
@@ -21,6 +22,9 @@ export interface PlayerState {
   aiLibrary?: AICardTemplate[];
   aiHand?: AICardTemplate[];
   aiLandsPlayed?: number;
+  virtualLibrary?: CardInstance[];
+  virtualHand?: CardInstance[];
+  landPlayedThisTurn?: boolean;
 }
 
 export interface LogEntry { id: string; turn: number; actor: string; message: string; }
@@ -68,6 +72,8 @@ export interface GameSettings {
   commanderDamageEnabled: boolean;
   tutorMode: boolean;
   simplifiedTurns: boolean;
+  mode?: GameMode;
+  deckId?: string;
 }
 
 export interface GameState {
