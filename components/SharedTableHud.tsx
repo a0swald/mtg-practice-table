@@ -37,6 +37,7 @@ export default function SharedTableHud() {
   const [hud, setHud] = useState<HudPayload | null>(null);
   const [isUtility, setIsUtility] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsUtility(window.location.pathname.startsWith('/utility'));
@@ -51,59 +52,46 @@ export default function SharedTableHud() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isUtility) return;
-    let frame = 0;
-    let lastTransform = '';
-
-    const syncWithPlayerCard = () => {
-      const wrapper = wrapperRef.current;
-      const playerCard = document.querySelector<HTMLElement>('[data-drag]');
-      if (wrapper && playerCard) {
-        const computed = window.getComputedStyle(playerCard).transform;
-        const nextTransform = computed === 'none' ? '' : computed;
-        if (nextTransform !== lastTransform) {
-          wrapper.style.transform = nextTransform;
-          lastTransform = nextTransform;
-        }
-      }
-      frame = window.requestAnimationFrame(syncWithPlayerCard);
-    };
-
-    frame = window.requestAnimationFrame(syncWithPlayerCard);
-    return () => window.cancelAnimationFrame(frame);
-  }, [isUtility]);
-
   const you = useMemo(() => hud?.players.find(player => player.you), [hud]);
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
+  const rotation = rotationFor(you);
+
+  useEffect(() => {
+    if (!isUtility || !you || others.length === 0) return;
+    let frame = 0;
+
+    const placeHud = () => {
+      const wrapper = wrapperRef.current;
+      const inner = innerRef.current;
+      const menuButton = document.querySelector<HTMLElement>('button[aria-label="Open table menu"]');
+      const playerCard = document.querySelector<HTMLElement>('[data-drag]');
+
+      if (wrapper && inner && menuButton) {
+        const menuRect = menuButton.getBoundingClientRect();
+        const width = inner.offsetWidth;
+        const height = inner.offsetHeight;
+        const sideways = rotation === 90 || rotation === 270;
+        const visualWidth = sideways ? height : width;
+        const offsetLeft = sideways ? (width - height) / 2 : 0;
+        const offsetTop = sideways ? (height - width) / 2 : 0;
+
+        wrapper.style.left = `${Math.max(4, menuRect.left - 4 - visualWidth - offsetLeft)}px`;
+        wrapper.style.top = `${Math.max(4, menuRect.top - offsetTop)}px`;
+        wrapper.style.transform = playerCard ? window.getComputedStyle(playerCard).transform.replace('none', '') : '';
+      }
+
+      frame = window.requestAnimationFrame(placeHud);
+    };
+
+    frame = window.requestAnimationFrame(placeHud);
+    return () => window.cancelAnimationFrame(frame);
+  }, [isUtility, others.length, rotation, you]);
+
   if (!isUtility || !hud || !you || others.length === 0) return null;
 
-  const rotation = rotationFor(you);
-  // Match the menu button's 1rem safe-area inset. The HUD's perceived top edge
-  // now lines up with the menu button's perceived top edge in every orientation.
-  const edge = 'calc(env(safe-area-inset-top) + 1rem)';
-  const side = 'calc(env(safe-area-inset-left) + 1rem)';
-  const right = 'calc(env(safe-area-inset-right) + 1rem)';
-  const bottom = 'calc(env(safe-area-inset-bottom) + 1rem)';
-
-  const anchorStyle = rotation === 0
-    ? { left: side, top: edge, transformOrigin: 'top left' }
-    : rotation === 90
-      ? { right, top: edge, transformOrigin: 'top right' }
-      : rotation === 180
-        ? { right, bottom, transformOrigin: 'bottom right' }
-        : { left: side, bottom, transformOrigin: 'bottom left' };
-
-  // In portrait mobile layouts a rotated HUD can otherwise size itself from the
-  // device width before rotation and look shifted/cropped. Cap its logical width
-  // against the appropriate viewport axis.
-  const maxWidth = rotation === 90 || rotation === 270
-    ? 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem)'
-    : 'calc(100dvw - env(safe-area-inset-left) - env(safe-area-inset-right) - 6rem)';
-
   return (
-    <div ref={wrapperRef} style={anchorStyle} className="pointer-events-none fixed z-30">
-      <div style={{ transform: `rotate(${rotation}deg)`, maxWidth }} className="flex w-max items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1.5 shadow-xl backdrop-blur-md scrollbar-none">
+    <div ref={wrapperRef} className="pointer-events-none fixed z-30 origin-top-left transition-transform duration-200">
+      <div ref={innerRef} style={{ transform: `rotate(${rotation}deg)` }} className="flex max-w-[min(72vw,360px)] items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1.5 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
           <div key={player.id} className="flex min-w-[76px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5 py-2">
             <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
