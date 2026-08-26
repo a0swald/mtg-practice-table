@@ -37,6 +37,7 @@ export type SharedRoom = { code: string; hostPlayerId?: string; players: Utility
 export type SharedSession = { code: string; playerId: string; host: boolean };
 
 type Ack = { ok: boolean; error?: string; room?: SharedRoom; playerId?: string; host?: boolean };
+type PreviewAck = { ok: boolean; error?: string; colors?: string[] };
 const SESSION_KEY = 'mtg-practice-shared-table-v1';
 const HUD_KEY = 'mtg-practice-shared-table-hud-v1';
 const HUD_EVENT = 'mtg-practice:shared-table-hud';
@@ -53,6 +54,7 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
   const [room, setRoom] = useState<SharedRoom | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [previewColors, setPreviewColors] = useState<string[]>([]);
 
   useEffect(() => { stateRef.current = state; }, [state]);
 
@@ -138,6 +140,34 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     publishHud(room, session);
   }, [room, session]);
 
+  useEffect(() => {
+    if (!session) return;
+    const quitOnClick = (event: MouseEvent) => {
+      const button = (event.target as HTMLElement | null)?.closest('button');
+      if (button?.textContent?.trim() === 'QUIT') leave();
+    };
+    document.addEventListener('click', quitOnClick, true);
+    return () => document.removeEventListener('click', quitOnClick, true);
+  }, [session]);
+
+  function previewTable(code: string) {
+    const socket = socketRef.current;
+    const normalized = code.replace(/\D/g, '').slice(0, 4);
+    if (!socket || normalized.length !== 4) {
+      setPreviewColors([]);
+      return;
+    }
+    socket.emit('shared:preview', { code: normalized }, (ack: PreviewAck) => {
+      if (!ack.ok) {
+        setPreviewColors([]);
+        setError(ack.error || 'Table code not found.');
+        return;
+      }
+      setError('');
+      setPreviewColors((ack.colors ?? []).map(color => color.toLowerCase()));
+    });
+  }
+
   async function host(name: string, color: string) {
     const socket = socketRef.current;
     const base = stateRef.current?.players[0];
@@ -163,9 +193,11 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     if (!socket || !base) return;
     const normalized = code.replace(/\D/g, '').slice(0, 4);
     const cleanName = name.trim();
+    const normalizedColor = color.toLowerCase();
     if (normalized.length !== 4) { setError('Enter the 4-digit table code.'); return; }
     if (!cleanName) { setError('Enter your name before joining.'); return; }
     if (!color) { setError('Choose your player color before joining.'); return; }
+    if (previewColors.includes(normalizedColor)) { setError('That player color is already taken.'); return; }
     setBusy(true); setError('');
     const player = { ...base, id: newId(), name: cleanName, color, backgroundImageUrl: undefined, backgroundCardName: undefined, commanderDamage: {} };
     socket.emit('shared:join', { code: normalized, player }, (ack: Ack) => {
@@ -174,6 +206,7 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
       const next = { code: ack.room.code, playerId: ack.playerId, host: Boolean(ack.host) };
       localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       setSession(next);
+      setPreviewColors([]);
       applyRoom(ack.room, next);
     });
   }
@@ -187,6 +220,7 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     setSession(null);
     setRoom(null);
     setError('');
+    setPreviewColors([]);
     lastSentRef.current = '';
   }
 
@@ -195,5 +229,5 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     return { ...player, connected: Boolean(member?.connected), host: Boolean(member?.host), you: player.id === session?.playerId };
   }) ?? [], [room, session?.playerId]);
 
-  return { session, room, roster, busy, error, host, join, leave, clearError: () => setError('') };
+  return { session, room, roster, busy, error, previewColors, host, join, leave, previewTable, clearError: () => setError('') };
 }
