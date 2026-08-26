@@ -9,4 +9,16 @@ export interface AICardTemplate {
   toughness?: number;
   flying?: boolean;
   amount?: number;
+  colorIdentity?: string[];
+}
+
+export interface AICommanderTemplate {
+  id: string;
+  name: string;
+  manaCost: number;
+  typeLine: string;
+  oracleText?: string;
+  power: number;
+  toughness: number;
+  colorIdentity: string[];
 }
