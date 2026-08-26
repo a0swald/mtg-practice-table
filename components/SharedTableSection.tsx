@@ -2,6 +2,7 @@
 
 import { Radio, UsersRound, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 import type { SharedRoom, SharedSession } from '@/lib/shared-table/useSharedUtilityTable';
 
 type RosterPlayer = SharedRoom['players'][number] & { connected: boolean; host: boolean; you: boolean };
@@ -9,39 +10,44 @@ type SetupMode = 'idle' | 'host' | 'join';
 
 const COLORS = ['#526bd8', '#d83c5b', '#3985ed', '#f4a20d', '#1ec367', '#a54ee9', '#0db0c8', '#df3c86', '#7acb14', '#fb7215', '#718299'];
 
-export function SharedTableSection({ session, roster, busy, error, previewColors, onHost, onJoin, onLeave, onPreview, onClearError }: {
+export function SharedTableSection({ session, roster, busy, error, onHost, onJoin, onLeave, onClearError }: {
   session: SharedSession | null;
   roster: RosterPlayer[];
   busy: boolean;
   error: string;
-  previewColors: string[];
   onHost: (name: string, color: string) => Promise<void>;
   onJoin: (code: string, name: string, color: string) => Promise<void>;
   onLeave: () => void;
-  onPreview: (code: string) => void;
   onClearError: () => void;
 }) {
   const [mode, setMode] = useState<SetupMode>('idle');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
+  const [takenColors, setTakenColors] = useState<string[]>([]);
 
   useEffect(() => {
-    if (mode !== 'join') return;
-    if (code.length === 4) onPreview(code);
-    else onPreview('');
-  }, [code, mode, onPreview]);
+    if (mode !== 'join' || code.length !== 4) {
+      setTakenColors([]);
+      return;
+    }
 
-  useEffect(() => {
-    if (color && previewColors.includes(color.toLowerCase())) setColor('');
-  }, [previewColors, color]);
+    const socket = io({ path: '/socket.io' });
+    socket.emit('shared:preview', { code }, (ack: { ok: boolean; colors?: string[] }) => {
+      const next = ack.ok ? (ack.colors ?? []).map(value => value.toLowerCase()) : [];
+      setTakenColors(next);
+      setColor(current => current && next.includes(current.toLowerCase()) ? '' : current);
+      socket.disconnect();
+    });
+    return () => socket.disconnect();
+  }, [code, mode]);
 
   function resetSetup() {
     setMode('idle');
     setCode('');
     setName('');
     setColor('');
-    onPreview('');
+    setTakenColors([]);
     onClearError();
   }
 
@@ -70,7 +76,7 @@ export function SharedTableSection({ session, roster, busy, error, previewColors
     );
   }
 
-  const colorTaken = color.length > 0 && previewColors.includes(color.toLowerCase());
+  const colorTaken = color.length > 0 && takenColors.includes(color.toLowerCase());
   const ready = name.trim().length > 0 && color.length > 0 && !colorTaken && (mode !== 'join' || code.length === 4);
 
   return (
@@ -90,15 +96,11 @@ export function SharedTableSection({ session, roster, busy, error, previewColors
           <input value={name} onChange={event => setName(event.target.value)} placeholder="Your name" autoComplete="off" style={{ fontSize: '16px' }} className="w-full rounded-xl bg-black/30 px-4 py-3 text-center font-bold outline-none" />
 
           <div>
-            <div className="mb-2 flex items-center justify-between gap-3 text-[9px] font-black uppercase tracking-[.16em] text-zinc-500"><span>Choose player color</span>{mode === 'join' && code.length === 4 && <span>{previewColors.length} taken</span>}</div>
+            <div className="mb-2 flex items-center justify-between gap-3 text-[9px] font-black uppercase tracking-[.16em] text-zinc-500"><span>Choose player color</span>{mode === 'join' && code.length === 4 && <span>{takenColors.length} taken</span>}</div>
             <div className="grid grid-cols-6 gap-2">
               {COLORS.map(option => {
-                const taken = mode === 'join' && previewColors.includes(option.toLowerCase());
-                return (
-                  <button key={option} disabled={taken} aria-label={taken ? `${option} is already taken` : `Choose ${option}`} onClick={() => setColor(option)} style={{ backgroundColor: option }} className={`relative h-9 rounded-xl border-2 transition-transform ${taken ? 'cursor-not-allowed border-white/5 opacity-20 saturate-0' : 'active:scale-95'} ${color === option ? 'border-white shadow-[0_0_0_2px_rgba(255,255,255,.2)]' : 'border-white/10'}`}>
-                    {taken && <span className="absolute inset-0 grid place-items-center text-base font-black text-white/80">×</span>}
-                  </button>
-                );
+                const taken = mode === 'join' && takenColors.includes(option.toLowerCase());
+                return <button key={option} disabled={taken} aria-label={taken ? `${option} is already taken` : `Choose ${option}`} onClick={() => setColor(option)} style={{ backgroundColor: option }} className={`relative h-9 rounded-xl border-2 transition-transform ${taken ? 'cursor-not-allowed border-white/5 opacity-20 saturate-0' : 'active:scale-95'} ${color === option ? 'border-white shadow-[0_0_0_2px_rgba(255,255,255,.2)]' : 'border-white/10'}`}>{taken && <span className="absolute inset-0 grid place-items-center text-base font-black text-white/80">×</span>}</button>;
               })}
             </div>
             <div className={`mt-2 flex items-center gap-2 rounded-xl bg-black/20 p-2 ${colorTaken ? 'ring-1 ring-red-300/50' : ''}`}>
@@ -111,11 +113,7 @@ export function SharedTableSection({ session, roster, busy, error, previewColors
 
           <div className="grid grid-cols-2 gap-2">
             <button onClick={resetSetup} className="rounded-xl bg-white/5 py-3 text-xs font-black">BACK</button>
-            {mode === 'host' ? (
-              <button disabled={busy || !ready} onClick={() => void onHost(name, color)} className="rounded-xl bg-cyan-300 py-3 text-xs font-black text-zinc-950 disabled:opacity-40">{busy ? 'STARTING…' : 'START TABLE'}</button>
-            ) : (
-              <button disabled={busy || !ready} onClick={() => void onJoin(code, name, color)} className="rounded-xl bg-cyan-300 py-3 text-xs font-black text-zinc-950 disabled:opacity-40">{busy ? 'JOINING…' : 'JOIN'}</button>
-            )}
+            {mode === 'host' ? <button disabled={busy || !ready} onClick={() => void onHost(name, color)} className="rounded-xl bg-cyan-300 py-3 text-xs font-black text-zinc-950 disabled:opacity-40">{busy ? 'STARTING…' : 'START TABLE'}</button> : <button disabled={busy || !ready} onClick={() => void onJoin(code, name, color)} className="rounded-xl bg-cyan-300 py-3 text-xs font-black text-zinc-950 disabled:opacity-40">{busy ? 'JOINING…' : 'JOIN'}</button>}
           </div>
         </div>
       )}
