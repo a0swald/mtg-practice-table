@@ -138,12 +138,15 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     publishHud(room, session);
   }, [room, session]);
 
-  async function host(name?: string) {
+  async function host(name: string, color: string) {
     const socket = socketRef.current;
     const base = stateRef.current?.players[0];
     if (!socket || !base) return;
+    const cleanName = name.trim();
+    if (!cleanName) { setError('Enter your name before hosting.'); return; }
+    if (!color) { setError('Choose your player color before hosting.'); return; }
     setBusy(true); setError('');
-    const player = { ...base, name: name?.trim() || base.name };
+    const player = { ...base, name: cleanName, color, backgroundImageUrl: undefined, backgroundCardName: undefined };
     socket.emit('shared:create', { player }, (ack: Ack) => {
       setBusy(false);
       if (!ack.ok || !ack.room || !ack.playerId) { setError(ack.error || 'Could not host table.'); return; }
@@ -154,14 +157,17 @@ export function useSharedUtilityTable(state: UtilityState | undefined, setState:
     });
   }
 
-  async function join(code: string, name: string) {
+  async function join(code: string, name: string, color: string) {
     const socket = socketRef.current;
     const base = stateRef.current?.players[0];
     if (!socket || !base) return;
     const normalized = code.replace(/\D/g, '').slice(0, 4);
+    const cleanName = name.trim();
     if (normalized.length !== 4) { setError('Enter the 4-digit table code.'); return; }
+    if (!cleanName) { setError('Enter your name before joining.'); return; }
+    if (!color) { setError('Choose your player color before joining.'); return; }
     setBusy(true); setError('');
-    const player = { ...base, id: newId(), name: name.trim() || base.name, commanderDamage: {} };
+    const player = { ...base, id: newId(), name: cleanName, color, backgroundImageUrl: undefined, backgroundCardName: undefined, commanderDamage: {} };
     socket.emit('shared:join', { code: normalized, player }, (ack: Ack) => {
       setBusy(false);
       if (!ack.ok || !ack.room || !ack.playerId) { setError(ack.error || 'Could not join table.'); return; }
