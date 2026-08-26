@@ -29,6 +29,10 @@ function readHud(): HudPayload | null {
   }
 }
 
+function facingRotation(player: HudPlayer | undefined) {
+  return !player || player.orientation === 'auto' ? 0 : player.orientation;
+}
+
 export default function SharedTableHud() {
   const [hud, setHud] = useState<HudPayload | null>(null);
   const [isUtility, setIsUtility] = useState(false);
@@ -50,6 +54,7 @@ export default function SharedTableHud() {
 
   const you = useMemo(() => hud?.players.find(player => player.you), [hud]);
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
+  const rotation = facingRotation(you);
 
   useEffect(() => {
     if (!isUtility || !you || others.length === 0) return;
@@ -89,21 +94,28 @@ export default function SharedTableHud() {
     <div ref={wrapperRef} className="pointer-events-none fixed z-30 transition-transform duration-200">
       <div ref={innerRef} className="flex h-14 w-max max-w-full items-stretch gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
-          <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5">
-            <div className="flex h-full w-4 shrink-0 flex-col items-center justify-center gap-1">
-              <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
-              {player.connected ? <Wifi size={11} className="text-emerald-300" /> : <WifiOff size={11} className="text-red-300" />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-white/70">
-                <span className="max-w-[64px] truncate">{player.name}</span>
-                {player.host && <Crown size={10} />}
+          <div key={player.id} className="flex h-full min-w-[84px] shrink-0 items-center justify-center rounded-xl bg-white/[.08] px-2">
+            <div
+              className="flex items-center gap-2"
+              style={{ transform: `rotate(${rotation}deg)` }}
+            >
+              <div className="flex w-4 shrink-0 flex-col items-center justify-center gap-1">
+                <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
+                {player.connected ? <Wifi size={11} className="text-emerald-300" /> : <WifiOff size={11} className="text-red-300" />}
               </div>
-              <div className="text-xl font-black leading-none tabular-nums text-white">{player.life}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-white/70">
+                  <span className="max-w-[64px] truncate">{player.name}</span>
+                  {player.host && <Crown size={10} />}
+                </div>
+                <div className="text-xl font-black leading-none tabular-nums text-white">{player.life}</div>
+              </div>
             </div>
           </div>
         ))}
-        <div className="flex h-full shrink-0 items-center px-1.5 text-[8px] font-black tracking-[.16em] text-white/35">{hud.code}</div>
+        <div className="flex h-full shrink-0 items-center justify-center px-1.5">
+          <span style={{ transform: `rotate(${rotation}deg)` }} className="text-[8px] font-black tracking-[.16em] text-white/35">{hud.code}</span>
+        </div>
       </div>
     </div>
   );
