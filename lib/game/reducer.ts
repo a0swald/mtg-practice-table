@@ -1,7 +1,7 @@
-import type { CardInstance, Zone } from '@/types/card';
+import type { CardDefinition, CardInstance, Zone } from '@/types/card';
 import type { CombatBlock, GameState, PendingCombat } from '@/types/game';
 import { continueAITurn, runAITurn } from '@/lib/ai/turn';
-import { createToken, uid } from './utils';
+import { createCardInstance, createToken, uid } from './utils';
 
 export type BlockAssignment = {
   attackerId: string;
@@ -16,7 +16,7 @@ export type GameAction =
   | { type: 'MOVE_CARD'; playerId: string; instanceId: string; zone: Zone }
   | { type: 'PASS_TURN' }
   | { type: 'SET_COMBAT'; combat?: PendingCombat }
-  | { type: 'RESOLVE_AI_ACTION' }
+  | { type: 'RESOLVE_AI_ACTION'; definition?: CardDefinition }
   | { type: 'COUNTER_AI_ACTION' }
   | { type: 'RESOLVE_AI_DAMAGE'; amount: number }
   | { type: 'RESOLVE_BLOCKS'; assignments: BlockAssignment[] }
@@ -97,13 +97,11 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
   const assignments: CombatBlock[] = [];
   const incomingPower = attackers.reduce((sum, card) => sum + cardPower(card), 0);
   const lifePressure = defender.life <= incomingPower + 4;
-
   const orderedAttackers = attackers.slice().sort((a, b) => creatureValue(b) - creatureValue(a));
 
   for (const attacker of orderedAttackers) {
     const candidates = available.filter(blocker => !used.has(blocker.instanceId));
     if (!candidates.length) break;
-
     const aPower = cardPower(attacker);
     const aToughness = cardToughness(attacker);
 
@@ -116,24 +114,19 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
       const trade = attackerDies && blockerDies;
       const badBlock = !attackerDies && blockerDies;
       const valueSwing = creatureValue(attacker) - creatureValue(blocker);
-
       let score = 0;
       if (profitable) score += 100 + valueSwing;
       else if (trade) score += 45 + valueSwing;
       else if (!blockerDies) score += lifePressure ? 35 : 12;
       else if (lifePressure) score += 10;
       else score -= 80;
-
       if (game.settings.difficulty === 'learning' && badBlock && !lifePressure) score -= 30;
       if (game.settings.difficulty === 'challenging' && attackerDies) score += 15;
-
       return { blocker, score, attackerDies, blockerDies, profitable, trade };
     }).sort((a, b) => b.score - a.score);
 
     const best = ranked[0];
-    const shouldBlock = best && (best.score > 0 || lifePressure);
-    if (!best || !shouldBlock) continue;
-
+    if (!best || !(best.score > 0 || lifePressure)) continue;
     const blocker = best.blocker;
     used.add(blocker.instanceId);
 
@@ -143,17 +136,7 @@ function chooseAIBlocks(game: GameState, attackers: CardInstance[], defenderId: 
     else if (lifePressure) reason = 'Life total is under pressure, so the AI is willing to block defensively.';
     else if (!best.blockerDies) reason = `${blocker.name} can absorb the attack and survive.`;
 
-    assignments.push({
-      attackerId: attacker.instanceId,
-      blockerId: blocker.instanceId,
-      attackerName: attacker.name,
-      blockerName: blocker.name,
-      attackerPower: aPower,
-      attackerToughness: aToughness,
-      blockerPower: cardPower(blocker),
-      blockerToughness: cardToughness(blocker),
-      reason,
-    });
+    assignments.push({ attackerId: attacker.instanceId, blockerId: blocker.instanceId, attackerName: attacker.name, blockerName: blocker.name, attackerPower: aPower, attackerToughness: aToughness, blockerPower: cardPower(blocker), blockerToughness: cardToughness(blocker), reason });
   }
 
   return assignments;
@@ -169,14 +152,12 @@ function resolvePlayerBlocks(game: GameState, combat: PendingCombat) {
     const attacker = attackerPlayer.battlefield.find(card => card.instanceId === block.attackerId);
     const blocker = defender.battlefield.find(card => card.instanceId === block.blockerId);
     if (!attacker || !blocker) return;
-
     const damageToAttacker = cardPower(blocker);
     const damageToBlocker = cardPower(attacker);
     attacker.damageMarked += damageToAttacker;
     blocker.damageMarked += damageToBlocker;
     withLog(game, 'Combat', `${block.blockerName} blocked ${block.attackerName}: ${damageToAttacker} damage to attacker, ${damageToBlocker} damage to blocker.`);
   });
-
   moveLethalCreatures(game);
 }
 
@@ -243,25 +224,11 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
       cards.forEach(card => { card.tapped = true; });
       const aiBlocks = chooseAIBlocks(game, cards, action.defenderId);
       const blockedIds = new Set(aiBlocks.map(block => block.attackerId));
-      const unblockedTotal = cards
-        .filter(card => !blockedIds.has(card.instanceId))
-        .reduce((sum, card) => sum + cardPower(card), 0);
-
-      game.pendingCombat = {
-        attackerId: player.id,
-        defenderId: action.defenderId,
-        attackerInstanceIds: action.attackerIds,
-        totalPower: unblockedTotal,
-        source: 'player',
-        aiBlocks,
-      };
-
+      const unblockedTotal = cards.filter(card => !blockedIds.has(card.instanceId)).reduce((sum, card) => sum + cardPower(card), 0);
+      game.pendingCombat = { attackerId: player.id, defenderId: action.defenderId, attackerInstanceIds: action.attackerIds, totalPower: unblockedTotal, source: 'player', aiBlocks };
       withLog(game, player.name, `Declared ${cards.length} attacker${cards.length === 1 ? '' : 's'}.`);
-      if (aiBlocks.length) {
-        aiBlocks.forEach(block => withLog(game, 'Opponent', `${block.blockerName} blocks ${block.attackerName}.`));
-      } else {
-        withLog(game, 'Opponent', 'No blocks declared.');
-      }
+      if (aiBlocks.length) aiBlocks.forEach(block => withLog(game, 'Opponent', `${block.blockerName} blocks ${block.attackerName}.`));
+      else withLog(game, 'Opponent', 'No blocks declared.');
     }
   }
 
@@ -273,14 +240,18 @@ export function reduceGame(input: GameState, action: GameAction): GameState {
 
     if (ai) {
       if (pending.kind === 'creature') {
-        const card = createToken(ai.id, pending.cardName, pending.power, pending.toughness);
+        const card = action.definition
+          ? createCardInstance(action.definition, ai.id, 'battlefield')
+          : createToken(ai.id, pending.cardName, pending.power, pending.toughness);
         card.summoningSick = true;
         ai.battlefield.push(card);
         withLog(game, ai.name, `${pending.cardName} resolved and entered the battlefield.`);
       } else if (pending.kind === 'ramp') {
-        const stone = createToken(ai.id, pending.cardName);
-        stone.summoningSick = false;
-        ai.battlefield.push(stone);
+        const card = action.definition
+          ? createCardInstance(action.definition, ai.id, 'battlefield')
+          : createToken(ai.id, pending.cardName);
+        card.summoningSick = false;
+        ai.battlefield.push(card);
         withLog(game, ai.name, `${pending.cardName} resolved.`);
       } else if (pending.kind === 'draw') {
         ai.handCount += pending.amount ?? 2;
