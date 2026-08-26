@@ -6,4 +6,5 @@ export interface AICardTemplate {
   power?: number;
   toughness?: number;
   flying?: boolean;
+  amount?: number;
 }
