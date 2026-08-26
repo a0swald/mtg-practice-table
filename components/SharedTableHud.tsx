@@ -79,17 +79,31 @@ export default function SharedTableHud() {
   if (!isUtility || !hud || !you || others.length === 0) return null;
 
   const rotation = rotationFor(you);
-  const position = rotation === 0
-    ? 'left-[max(env(safe-area-inset-left),.75rem)] top-[max(env(safe-area-inset-top),.75rem)] origin-top-left'
+  // Match the menu button's 1rem safe-area inset. The HUD's perceived top edge
+  // now lines up with the menu button's perceived top edge in every orientation.
+  const edge = 'calc(env(safe-area-inset-top) + 1rem)';
+  const side = 'calc(env(safe-area-inset-left) + 1rem)';
+  const right = 'calc(env(safe-area-inset-right) + 1rem)';
+  const bottom = 'calc(env(safe-area-inset-bottom) + 1rem)';
+
+  const anchorStyle = rotation === 0
+    ? { left: side, top: edge, transformOrigin: 'top left' }
     : rotation === 90
-      ? 'right-[max(env(safe-area-inset-right),.75rem)] top-[max(env(safe-area-inset-top),.75rem)] origin-top-right'
+      ? { right, top: edge, transformOrigin: 'top right' }
       : rotation === 180
-        ? 'right-[max(env(safe-area-inset-right),.75rem)] bottom-[max(env(safe-area-inset-bottom),.75rem)] origin-bottom-right'
-        : 'left-[max(env(safe-area-inset-left),.75rem)] bottom-[max(env(safe-area-inset-bottom),.75rem)] origin-bottom-left';
+        ? { right, bottom, transformOrigin: 'bottom right' }
+        : { left: side, bottom, transformOrigin: 'bottom left' };
+
+  // In portrait mobile layouts a rotated HUD can otherwise size itself from the
+  // device width before rotation and look shifted/cropped. Cap its logical width
+  // against the appropriate viewport axis.
+  const maxWidth = rotation === 90 || rotation === 270
+    ? 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem)'
+    : 'calc(100dvw - env(safe-area-inset-left) - env(safe-area-inset-right) - 6rem)';
 
   return (
-    <div ref={wrapperRef} className={`pointer-events-none fixed z-30 ${position}`}>
-      <div style={{ transform: `rotate(${rotation}deg)` }} className="flex max-w-[78vw] items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1.5 shadow-xl backdrop-blur-md scrollbar-none">
+    <div ref={wrapperRef} style={anchorStyle} className="pointer-events-none fixed z-30">
+      <div style={{ transform: `rotate(${rotation}deg)`, maxWidth }} className="flex w-max items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/15 bg-black/55 p-1.5 shadow-xl backdrop-blur-md scrollbar-none">
         {others.map(player => (
           <div key={player.id} className="flex min-w-[76px] shrink-0 items-center gap-2 rounded-xl bg-white/[.08] px-2.5 py-2">
             <span style={{ backgroundColor: player.color }} className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30" />
