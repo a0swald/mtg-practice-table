@@ -28,6 +28,7 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/server.mjs ./server.mjs
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/start.sh ./start.sh
+COPY --from=builder /app/restore-caddy.mjs ./restore-caddy.mjs
 RUN chmod +x ./start.sh
 
 EXPOSE 3100 80 443
