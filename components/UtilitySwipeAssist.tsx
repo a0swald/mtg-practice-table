@@ -14,7 +14,7 @@ type CarouselGesture = {
   y: number;
   scrollLeft: number;
   carousel: HTMLElement;
-  target: HTMLElement | null;
+  startIndex: number;
   horizontal: boolean;
 };
 
@@ -54,14 +54,25 @@ function carouselRotationElement(carousel: HTMLElement) {
   return carousel.parentElement ?? carousel;
 }
 
-function snapCarousel(carousel: HTMLElement) {
-  const sections = Array.from(carousel.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
-  if (!sections.length) return;
+function carouselSections(carousel: HTMLElement) {
+  return Array.from(carousel.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+}
 
-  const closest = sections.reduce((best, section) =>
-    Math.abs(section.offsetLeft - carousel.scrollLeft) < Math.abs(best.offsetLeft - carousel.scrollLeft) ? section : best,
-  );
-  carousel.scrollTo({ left: closest.offsetLeft, behavior: 'smooth' });
+function closestSectionIndex(carousel: HTMLElement) {
+  const sections = carouselSections(carousel);
+  if (!sections.length) return 0;
+  let bestIndex = 0;
+  for (let index = 1; index < sections.length; index += 1) {
+    if (Math.abs(sections[index].offsetLeft - carousel.scrollLeft) < Math.abs(sections[bestIndex].offsetLeft - carousel.scrollLeft)) bestIndex = index;
+  }
+  return bestIndex;
+}
+
+function goToSection(carousel: HTMLElement, index: number) {
+  const sections = carouselSections(carousel);
+  if (!sections.length) return;
+  const target = sections[Math.max(0, Math.min(sections.length - 1, index))];
+  carousel.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
 }
 
 export default function UtilitySwipeAssist() {
@@ -99,8 +110,6 @@ export default function UtilitySwipeAssist() {
       }
     };
 
-    // iOS focuses the Name input as soon as that settings panel mounts. Strip
-    // autofocus at the DOM boundary so the keyboard only opens after a real tap.
     removeNameAutofocus(document);
     const observer = new MutationObserver(records => {
       for (const record of records) {
@@ -124,7 +133,7 @@ export default function UtilitySwipeAssist() {
           y: touch.clientY,
           scrollLeft: carousel.scrollLeft,
           carousel,
-          target: event.target instanceof HTMLElement ? event.target : null,
+          startIndex: closestSectionIndex(carousel),
           horizontal: false,
         };
       }
@@ -139,11 +148,12 @@ export default function UtilitySwipeAssist() {
         const screenDy = touch.clientY - carouselGesture.y;
         const logical = localDelta(carouselRotationElement(carouselGesture.carousel), screenDx, screenDy);
 
-        if (!carouselGesture.horizontal && Math.abs(logical.x) > 8 && Math.abs(logical.x) > Math.abs(logical.y) * 1.1) {
+        if (!carouselGesture.horizontal && Math.abs(logical.x) > 6 && Math.abs(logical.x) > Math.abs(logical.y) * 0.8) {
           carouselGesture.horizontal = true;
         }
         if (carouselGesture.horizontal) {
           event.preventDefault();
+          event.stopPropagation();
           carouselGesture.carousel.scrollLeft = carouselGesture.scrollLeft - logical.x;
           return;
         }
@@ -156,15 +166,27 @@ export default function UtilitySwipeAssist() {
     };
 
     const onTouchEnd = (event: TouchEvent) => {
-      if (carouselGesture) {
+      if (carouselGesture && event.changedTouches.length > 0) {
         const currentCarousel = carouselGesture;
         carouselGesture = null;
+        const touch = event.changedTouches[0];
+        const logical = localDelta(
+          carouselRotationElement(currentCarousel.carousel),
+          touch.clientX - currentCarousel.x,
+          touch.clientY - currentCarousel.y,
+        );
+
         if (currentCarousel.horizontal) {
           event.preventDefault();
           event.stopPropagation();
           suppressCarouselClick = true;
           window.setTimeout(() => { suppressCarouselClick = false; }, 350);
-          snapCarousel(currentCarousel.carousel);
+
+          // A deliberate swipe advances exactly one page. This avoids iOS
+          // snapping a short drag back to Player even though the gesture was valid.
+          const threshold = 28;
+          const direction = logical.x < -threshold ? 1 : logical.x > threshold ? -1 : 0;
+          goToSection(currentCarousel.carousel, direction === 0 ? closestSectionIndex(currentCarousel.carousel) : currentCarousel.startIndex + direction);
           touchGesture = null;
           return;
         }
