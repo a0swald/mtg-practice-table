@@ -101,9 +101,9 @@ export default function UtilitySwipeAssist() {
     };
 
     const removeNameAutofocus = (root: ParentNode) => {
-      const inputs = root instanceof HTMLInputElement && root.matches('input[autofocus]')
+      const inputs: HTMLInputElement[] = root instanceof HTMLInputElement && root.matches('input[autofocus]')
         ? [root]
-        : Array.from(root.querySelectorAll?.('input[autofocus]') ?? []);
+        : Array.from(root.querySelectorAll<HTMLInputElement>('input[autofocus]'));
       for (const input of inputs) {
         input.removeAttribute('autofocus');
         if (document.activeElement === input) input.blur();
