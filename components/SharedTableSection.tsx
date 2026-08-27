@@ -10,7 +10,7 @@ type SetupMode = 'idle' | 'host' | 'join';
 
 const COLORS = ['#526bd8', '#d83c5b', '#3985ed', '#f4a20d', '#1ec367', '#a54ee9', '#0db0c8', '#df3c86', '#7acb14', '#fb7215', '#718299'];
 
-export function SharedTableSection({ session, roster, busy, error, onHost, onJoin, onLeave, onClearError, initialMode = 'idle', showIntro = true }: {
+export function SharedTableSection({ session, roster, busy, error, onHost, onJoin, onLeave, onClearError, initialMode = 'idle', showIntro = true, onBack }: {
   session: SharedSession | null;
   roster: RosterPlayer[];
   busy: boolean;
@@ -21,6 +21,7 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
   onClearError: () => void;
   initialMode?: SetupMode;
   showIntro?: boolean;
+  onBack?: () => void;
 }) {
   const [mode, setMode] = useState<SetupMode>(initialMode);
   const [code, setCode] = useState('');
@@ -53,6 +54,7 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
     setColor('');
     setTakenColors([]);
     onClearError();
+    onBack?.();
   }
 
   if (session) {
