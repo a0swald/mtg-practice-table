@@ -16,10 +16,12 @@ EOF
 export XDG_DATA_HOME=/app/data/caddy-data
 export XDG_CONFIG_HOME=/app/data/caddy-config
 
-# Remote ingress is intentionally non-critical: if Caddy fails, the MTG app
-# still starts normally through Umbrel's app proxy.
+# Remote ingress is intentionally non-critical. The MTG app must still boot
+# through Umbrel even if Caddy cannot start or restore its public config.
 caddy run --config /tmp/Caddyfile --adapter caddyfile &
 CADDY_PID=$!
+
+node /app/restore-caddy.mjs >/dev/null 2>&1 || true
 
 cleanup() {
   if kill -0 "$CADDY_PID" 2>/dev/null; then
