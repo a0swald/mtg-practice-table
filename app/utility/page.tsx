@@ -95,9 +95,9 @@ function rotateDelta(dx: number, dy: number, rotation: number) {
 
 export default function UtilityPage() {
   const router = useRouter();
-  const [setupPlayers, setSetupPlayers] = useState(4);
+  const [setupPlayers, setSetupPlayers] = useState(1);
   const [setupLife, setSetupLife] = useState(40);
-  const [customLife, setCustomLife] = useState(40);
+  const [setupJoinOpen, setSetupJoinOpen] = useState(false);
   const [state, setState] = useState<UtilityState>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [diceResult, setDiceResult] = useState<string>();
@@ -113,6 +113,11 @@ export default function UtilityPage() {
   }, []);
 
   useEffect(() => { if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }, [state]);
+
+  useEffect(() => {
+    if (!shared.session) return;
+    setState(current => current && !current.started ? { ...current, started: true } : current);
+  }, [shared.session]);
 
   useEffect(() => {
     if (!state?.running) return;
@@ -162,12 +167,21 @@ export default function UtilityPage() {
           <div className="text-[11px] font-black uppercase tracking-[.24em] text-cyan-300">Table Utility</div>
           <h1 className="mt-1 text-3xl font-black">Start Table</h1>
           <p className="mt-2 text-sm leading-6 text-zinc-400">Designed for an iPhone or iPad lying flat between players.</p>
-          <div className="mt-6 space-y-4">
-            <label className="flex items-center justify-between font-bold">Players<select value={setupPlayers} onChange={event => setSetupPlayers(Number(event.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2">{Array.from({ length: 10 }, (_, index) => index + 1).map(value => <option key={value}>{value}</option>)}</select></label>
-            <label className="flex items-center justify-between font-bold">Starting life<select value={setupLife} onChange={event => setSetupLife(Number(event.target.value))} className="rounded-xl bg-zinc-900 px-3 py-2"><option value={20}>20</option><option value={30}>30</option><option value={40}>40</option><option value={0}>Custom</option></select></label>
-            {setupLife === 0 && <input type="number" value={customLife} onChange={event => setCustomLife(Number(event.target.value) || 1)} className="w-full rounded-xl bg-black/25 px-3 py-3 text-base" />}
-            <button onClick={() => setState(freshState(setupPlayers, setupLife === 0 ? customLife : setupLife))} className="w-full rounded-2xl bg-cyan-300 py-4 font-black text-zinc-950">START COUNTER</button>
-          </div>
+
+          {!setupJoinOpen ? (
+            <div className="mt-6 space-y-4">
+              <SetupStepper label="Players" value={setupPlayers} onMinus={() => setSetupPlayers(value => Math.max(1, value - 1))} onPlus={() => setSetupPlayers(value => Math.min(10, value + 1))} />
+              <SetupStepper label="Starting life" value={setupLife} onMinus={() => setSetupLife(value => Math.max(1, value - 1))} onPlus={() => setSetupLife(value => value + 1)} />
+              <button onClick={() => setState(freshState(setupPlayers, setupLife))} className="w-full rounded-2xl bg-cyan-300 py-4 font-black text-zinc-950">START GAME</button>
+              <div className="flex items-center gap-3 py-1"><div className="h-px flex-1 bg-white/10" /><span className="text-[9px] font-black uppercase tracking-[.2em] text-zinc-600">or</span><div className="h-px flex-1 bg-white/10" /></div>
+              <button onClick={() => { setState({ ...freshState(1, setupLife), started: false }); setSetupJoinOpen(true); shared.clearError(); }} className="w-full rounded-2xl border border-white/10 bg-white/[.06] py-4 font-black text-white">JOIN SHARED TABLE</button>
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/15 p-4">
+              <div className="mb-4"><div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Join Shared Table</div><p className="mt-1 text-xs leading-5 text-zinc-500">Enter the table code, your name, and a player color.</p></div>
+              <SharedTableSection key="quick-join" session={shared.session} roster={shared.roster} busy={shared.busy} error={shared.error} onHost={shared.host} onJoin={shared.join} onLeave={shared.leave} onClearError={shared.clearError} initialMode="join" showIntro={false} onBack={() => { shared.leave(); setSetupJoinOpen(false); setState(undefined); }} />
+            </div>
+          )}
         </section>
       </main>
     );
@@ -200,6 +214,10 @@ export default function UtilityPage() {
       )}
     </main>
   );
+}
+
+function SetupStepper({ label, value, onMinus, onPlus }: { label: string; value: number; onMinus: () => void; onPlus: () => void }) {
+  return <div className="flex items-center justify-between gap-4 rounded-2xl bg-black/20 px-4 py-3"><div className="font-bold">{label}</div><div className="grid grid-cols-[44px_58px_44px] items-center gap-2"><button aria-label={`Decrease ${label.toLowerCase()}`} onClick={onMinus} className="h-11 rounded-xl bg-white/10 text-2xl font-black active:scale-95">−</button><div className="text-center text-2xl font-black tabular-nums">{value}</div><button aria-label={`Increase ${label.toLowerCase()}`} onClick={onPlus} className="h-11 rounded-xl bg-white/10 text-2xl font-black active:scale-95">+</button></div></div>;
 }
 
 function TableMenuButton({ rotation, single, onClick }: { rotation: number; single: boolean; onClick: () => void }) {
