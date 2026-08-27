@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 const dataDir = process.env.MTG_DATA_DIR || '/app/data';
 const file = path.join(dataDir, 'remote-access.json');
-const caddyAdmin = process.env.CADDY_ADMIN_URL || 'http://caddy:2019';
+const caddyAdmin = process.env.CADDY_ADMIN_URL || 'http://127.0.0.1:2019';
 
 type Config = { provider: 'duckdns'; domain: string; token: string; dnsUpdatedAt?: string; dnsOk?: boolean; caddyOk?: boolean };
 
@@ -19,7 +19,7 @@ async function updateDuckDns(config: Config) {
 
 async function configureCaddy(domain: string) {
   try {
-    const caddyfile = `{\n  admin 0.0.0.0:2019\n}\n\n${domain}.duckdns.org {\n  reverse_proxy web:3100\n}\n`;
+    const caddyfile = `{\n  admin 127.0.0.1:2019\n}\n\n${domain}.duckdns.org {\n  reverse_proxy 127.0.0.1:3100\n}\n`;
     const adapted = await fetch(`${caddyAdmin}/adapt`, {
       method: 'POST',
       headers: { 'content-type': 'text/caddyfile' },
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
   const message = !dnsOk
     ? 'DuckDNS did not accept the update. Verify the subdomain and token.'
     : !caddyOk
-      ? 'DuckDNS is configured, but the HTTPS proxy could not be configured.'
-      : 'DuckDNS and Caddy are configured. Forward router WAN 80 → Umbrel 8080 and WAN 443 → Umbrel 8443, then refresh the connection check.';
+      ? 'DuckDNS is configured, but the bundled HTTPS proxy could not be configured. Local MTG access remains available.'
+      : 'DuckDNS and HTTPS proxy are configured. Forward router WAN 80 → Umbrel 18080 and WAN 443 → Umbrel 18443, then refresh the connection check.';
   return NextResponse.json({ configured: true, domain: `${domain}.duckdns.org`, dnsOk, caddyOk, dnsUpdatedAt: config.dnsUpdatedAt, message });
 }
