@@ -42,6 +42,18 @@ button, input, select { font: inherit; }
   background: transparent !important;
 }
 
+/* Let a horizontal settings swipe begin anywhere, including directly on
+   action icons/counters. Normal taps still activate the underlying control;
+   once the finger becomes a pan gesture the carousel owns the movement. */
+.snap-x.snap-mandatory,
+.snap-x.snap-mandatory > section,
+.snap-x.snap-mandatory > section > div,
+.snap-x.snap-mandatory button,
+.snap-x.snap-mandatory a,
+.snap-x.snap-mandatory [role="button"] {
+  touch-action: pan-x pan-y !important;
+}
+
 /* Each local player card is a size container. On crowded 5–6 player layouts,
    compact the swipe-up settings surface to the card instead of the device. */
 article:has([data-drawer-handle]) {
