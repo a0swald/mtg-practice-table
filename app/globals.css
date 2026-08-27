@@ -28,11 +28,18 @@ button, input, select { font: inherit; }
   line-height: 1;
 }
 
-/* Utility settings: one seamless, edge-to-edge horizontal surface. */
+/* Utility settings: one seamless horizontal surface. Keep a small inset on
+   phone-sized screens so rotated controls do not sit against a notch/bezel. */
 .snap-x.snap-mandatory {
   gap: 0 !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
+}
+@media (max-width: 900px), (max-height: 900px) {
+  .snap-x.snap-mandatory {
+    width: 94% !important;
+    margin-inline: auto !important;
+  }
 }
 .snap-x.snap-mandatory > section {
   width: 100% !important;
@@ -42,9 +49,8 @@ button, input, select { font: inherit; }
   background: transparent !important;
 }
 
-/* Let a horizontal settings swipe begin anywhere, including directly on
-   action icons/counters. Normal taps still activate the underlying control;
-   once the finger becomes a pan gesture the carousel owns the movement. */
+/* The document-level iOS gesture helper owns horizontal swipes. Keeping touch
+   handling permissive here lets a swipe begin directly over buttons/counters. */
 .snap-x.snap-mandatory,
 .snap-x.snap-mandatory > section,
 .snap-x.snap-mandatory > section > div,
