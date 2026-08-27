@@ -10,11 +10,14 @@ type Gesture = {
   handle: HTMLElement;
 };
 
-function opensForSwipe(handle: HTMLElement, dx: number, dy: number) {
-  if (handle.classList.contains('bottom-0')) return dy < -36;
-  if (handle.classList.contains('top-0')) return dy > 36;
-  if (handle.classList.contains('left-0')) return dx > 36;
-  if (handle.classList.contains('right-0')) return dx < -36;
+function swipeMatchesHandle(handle: HTMLElement, dx: number, dy: number) {
+  const isOpen = handle.getAttribute('aria-label')?.startsWith('Close') ?? false;
+  const threshold = 36;
+
+  if (handle.classList.contains('bottom-0')) return isOpen ? dy > threshold : dy < -threshold;
+  if (handle.classList.contains('top-0')) return isOpen ? dy < -threshold : dy > threshold;
+  if (handle.classList.contains('left-0')) return isOpen ? dx < -threshold : dx > threshold;
+  if (handle.classList.contains('right-0')) return isOpen ? dx > threshold : dx < -threshold;
   return false;
 }
 
@@ -25,6 +28,7 @@ export default function UtilitySwipeAssist() {
     if (!pathname.startsWith('/utility')) return;
 
     let gesture: Gesture | null = null;
+    let suppressTrustedClick: HTMLElement | null = null;
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
@@ -40,11 +44,22 @@ export default function UtilitySwipeAssist() {
 
       const dx = event.clientX - current.x;
       const dy = event.clientY - current.y;
-      if (!opensForSwipe(current.handle, dx, dy)) return;
+      if (!swipeMatchesHandle(current.handle, dx, dy)) return;
 
       event.preventDefault();
       event.stopPropagation();
-      window.setTimeout(() => current.handle.click(), 0);
+      suppressTrustedClick = current.handle;
+      current.handle.click();
+      window.setTimeout(() => { suppressTrustedClick = null; }, 250);
+    };
+
+    const onClick = (event: MouseEvent) => {
+      if (!event.isTrusted || !suppressTrustedClick) return;
+      const target = event.target as HTMLElement | null;
+      if (!target || !suppressTrustedClick.contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressTrustedClick = null;
     };
 
     const cancel = (event: PointerEvent) => {
@@ -54,10 +69,12 @@ export default function UtilitySwipeAssist() {
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('pointerup', finish, true);
     document.addEventListener('pointercancel', cancel, true);
+    document.addEventListener('click', onClick, true);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointerup', finish, true);
       document.removeEventListener('pointercancel', cancel, true);
+      document.removeEventListener('click', onClick, true);
     };
   }, [pathname]);
 
