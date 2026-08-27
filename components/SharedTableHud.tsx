@@ -2,6 +2,7 @@
 
 import { Crown, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 type Facing = 'auto' | 0 | 90 | 180 | 270;
 type HudPlayer = {
@@ -38,11 +39,11 @@ function facingRotation(player: HudPlayer | undefined) {
 }
 
 export default function SharedTableHud() {
+  const pathname = usePathname();
   const [hud, setHud] = useState<HudPayload | null>(null);
-  const [isUtility, setIsUtility] = useState(false);
+  const isUtility = pathname.startsWith('/utility');
 
   useEffect(() => {
-    setIsUtility(window.location.pathname.startsWith('/utility'));
     setHud(readHud());
 
     const onHud = (event: Event) => setHud((event as CustomEvent<HudPayload | null>).detail ?? readHud());
@@ -55,6 +56,10 @@ export default function SharedTableHud() {
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    if (isUtility) setHud(readHud());
+  }, [isUtility]);
 
   const you = useMemo(() => hud?.players.find(player => player.you), [hud]);
   const others = useMemo(() => hud?.players.filter(player => !player.you) ?? [], [hud]);
