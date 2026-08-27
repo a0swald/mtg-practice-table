@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 const file = path.join(process.env.MTG_DATA_DIR || '/app/data', 'remote-access.json');
 
-type Config = { domain: string; token: string; dnsUpdatedAt?: string; dnsOk?: boolean };
+type Config = { domain: string; token: string; dnsUpdatedAt?: string; dnsOk?: boolean; caddyOk?: boolean };
 async function config(): Promise<Config | null> { try { return JSON.parse(await fs.readFile(file, 'utf8')) as Config; } catch { return null; } }
 async function reachable(url: string) { try { const response = await fetch(url, { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(5000) }); return response.status > 0 && response.status < 500; } catch { return false; } }
 
@@ -15,7 +15,13 @@ export async function POST() {
   const domain = `${saved.domain}.duckdns.org`;
   const publicOk = await reachable(`http://${domain}`);
   const httpsOk = await reachable(`https://${domain}`);
-  // Socket.IO begins with an HTTP polling handshake and upgrades to WebSocket, so a successful Engine.IO handshake proves the public proxy reaches Socket.IO.
   const socketOk = httpsOk && await reachable(`https://${domain}/socket.io/?EIO=4&transport=polling`);
-  return NextResponse.json({ configured: true, domain, dnsOk: saved.dnsOk, dnsUpdatedAt: saved.dnsUpdatedAt, publicOk, httpsOk, socketOk, message: httpsOk && socketOk ? 'Remote HTTPS and Shared Table connectivity are reachable.' : saved.dnsOk ? 'DNS is configured. Public HTTPS still needs router forwarding or a tunnel/reverse proxy.' : 'Check the DuckDNS configuration first.' });
+  const message = httpsOk && socketOk
+    ? 'Remote HTTPS and Shared Table connectivity are reachable.'
+    : saved.dnsOk && saved.caddyOk
+      ? 'DuckDNS and the bundled HTTPS proxy are ready. If Public is still offline, forward WAN 80 → Umbrel 18080 and WAN 443 → Umbrel 18443.'
+      : saved.dnsOk
+        ? 'DNS is configured, but the bundled HTTPS proxy is not ready.'
+        : 'Check the DuckDNS configuration first.';
+  return NextResponse.json({ configured: true, domain, dnsOk: saved.dnsOk, caddyOk: saved.caddyOk, dnsUpdatedAt: saved.dnsUpdatedAt, publicOk, httpsOk, socketOk, message });
 }
