@@ -10,7 +10,7 @@ type SetupMode = 'idle' | 'host' | 'join';
 
 const COLORS = ['#526bd8', '#d83c5b', '#3985ed', '#f4a20d', '#1ec367', '#a54ee9', '#0db0c8', '#df3c86', '#7acb14', '#fb7215', '#718299'];
 
-export function SharedTableSection({ session, roster, busy, error, onHost, onJoin, onLeave, onClearError }: {
+export function SharedTableSection({ session, roster, busy, error, onHost, onJoin, onLeave, onClearError, initialMode = 'idle', showIntro = true }: {
   session: SharedSession | null;
   roster: RosterPlayer[];
   busy: boolean;
@@ -19,8 +19,10 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
   onJoin: (code: string, name: string, color: string) => Promise<void>;
   onLeave: () => void;
   onClearError: () => void;
+  initialMode?: SetupMode;
+  showIntro?: boolean;
 }) {
-  const [mode, setMode] = useState<SetupMode>('idle');
+  const [mode, setMode] = useState<SetupMode>(initialMode);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
@@ -45,7 +47,7 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
   }, [code, mode]);
 
   function resetSetup() {
-    setMode('idle');
+    setMode(initialMode);
     setCode('');
     setName('');
     setColor('');
@@ -55,7 +57,7 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
 
   if (session) {
     return (
-      <div className="mt-5 border-t border-white/10 pt-4">
+      <div className={showIntro ? 'mt-5 border-t border-white/10 pt-4' : ''}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.18em] text-cyan-300"><Radio size={14} /> Shared Table</div>
@@ -82,9 +84,8 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
   const ready = name.trim().length > 0 && color.length > 0 && !colorTaken && (mode !== 'join' || code.length === 4);
 
   return (
-    <div className="mt-5 border-t border-white/10 pt-4">
-      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.18em] text-cyan-300"><UsersRound size={14} /> Shared Table</div>
-      <p className="mt-1 text-xs leading-5 text-zinc-500">Give everyone at the table a 4-digit code so each phone can control its own life counter.</p>
+    <div className={showIntro ? 'mt-5 border-t border-white/10 pt-4' : ''}>
+      {showIntro && <><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.18em] text-cyan-300"><UsersRound size={14} /> Shared Table</div><p className="mt-1 text-xs leading-5 text-zinc-500">Give everyone at the table a 4-digit code so each phone can control its own life counter.</p></>}
 
       {mode === 'idle' ? (
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -92,7 +93,7 @@ export function SharedTableSection({ session, roster, busy, error, onHost, onJoi
           <button disabled={busy} onClick={() => { onClearError(); setMode('join'); }} className="rounded-2xl bg-white/10 py-3 text-xs font-black disabled:opacity-50">JOIN TABLE</button>
         </div>
       ) : (
-        <div className="mt-3 space-y-3">
+        <div className={`${showIntro ? 'mt-3' : ''} space-y-3`}>
           {mode === 'join' && <input value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" pattern="[0-9]*" placeholder="4-digit code" className="w-full rounded-xl bg-black/30 px-4 py-3 text-center text-xl font-black tracking-[.25em] outline-none" />}
 
           <input value={name} onChange={event => setName(event.target.value)} placeholder="Your name" autoComplete="off" style={{ fontSize: '16px' }} className="w-full rounded-xl bg-black/30 px-4 py-3 text-center font-bold outline-none" />
