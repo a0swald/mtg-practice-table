@@ -22,6 +22,7 @@ export interface PlayerState {
   aiLibrary?: AICardTemplate[];
   aiHand?: AICardTemplate[];
   aiLandsPlayed?: number;
+  aiCommanderManaCost?: number;
   virtualLibrary?: CardInstance[];
   virtualHand?: CardInstance[];
   landPlayedThisTurn?: boolean;
