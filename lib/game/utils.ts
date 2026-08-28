@@ -4,69 +4,20 @@ import type { GameSettings, GameState, PlayerState } from '@/types/game';
 import { buildCommanderAIDeck } from '@/lib/ai/deck';
 
 export const uid = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-
-export function numericStat(value?: string): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function entersTapped(definition: CardDefinition): boolean {
-  const oracle = definition.oracleText?.toLowerCase() ?? '';
-  if (!oracle) return false;
-  const name = definition.name.toLowerCase();
-  const normalized = oracle.replaceAll('~', name);
-  return normalized.includes('enters the battlefield tapped') || normalized.includes('enters tapped') || normalized.includes(`${name} enters the battlefield tapped`) || normalized.includes(`${name} enters tapped`);
-}
-
-export function createCardInstance(definition: CardDefinition, ownerId: string, zone: CardInstance['zone'] = 'battlefield'): CardInstance {
-  const creature = definition.typeLine.toLowerCase().includes('creature');
-  const tappedOnEntry = zone === 'battlefield' && entersTapped(definition);
-  return { instanceId:uid(),cardId:definition.id,definition,name:definition.name,zone,tapped:tappedOnEntry,basePower:numericStat(definition.power),baseToughness:numericStat(definition.toughness),plusOneCounters:0,minusOneCounters:0,damageMarked:0,temporaryPowerModifier:0,temporaryToughnessModifier:0,customCounters:[],summoningSick:zone==='battlefield'&&creature,token:false,ownerId,controllerId:ownerId };
-}
-
+export function numericStat(value?: string): number | undefined {if(!value)return undefined;const parsed=Number.parseInt(value,10);return Number.isFinite(parsed)?parsed:undefined;}
+function entersTapped(definition:CardDefinition):boolean{const oracle=definition.oracleText?.toLowerCase()??'';if(!oracle)return false;const name=definition.name.toLowerCase(),normalized=oracle.replaceAll('~',name);return normalized.includes('enters the battlefield tapped')||normalized.includes('enters tapped')||normalized.includes(`${name} enters the battlefield tapped`)||normalized.includes(`${name} enters tapped`);}
+export function createCardInstance(definition:CardDefinition,ownerId:string,zone:CardInstance['zone']='battlefield'):CardInstance{const creature=definition.typeLine.toLowerCase().includes('creature'),tappedOnEntry=zone==='battlefield'&&entersTapped(definition);return{instanceId:uid(),cardId:definition.id,definition,name:definition.name,zone,tapped:tappedOnEntry,basePower:numericStat(definition.power),baseToughness:numericStat(definition.toughness),plusOneCounters:0,minusOneCounters:0,damageMarked:0,temporaryPowerModifier:0,temporaryToughnessModifier:0,customCounters:[],summoningSick:zone==='battlefield'&&creature,token:false,ownerId,controllerId:ownerId};}
 export function createToken(ownerId:string,name:string,power?:number,toughness?:number,quantity=1):CardInstance{return{instanceId:uid(),name,zone:'battlefield',tapped:false,basePower:power,baseToughness:toughness,plusOneCounters:0,minusOneCounters:0,damageMarked:0,temporaryPowerModifier:0,temporaryToughnessModifier:0,customCounters:[],summoningSick:power!==undefined,token:true,tokenQuantity:quantity,ownerId,controllerId:ownerId};}
-
 export function currentStats(card:CardInstance){if(card.basePower===undefined||card.baseToughness===undefined)return undefined;const delta=card.plusOneCounters-card.minusOneCounters;return{power:card.basePower+delta+card.temporaryPowerModifier,toughness:card.baseToughness+delta+card.temporaryToughnessModifier};}
-
 function shuffle<T>(items:T[]):T[]{const result=[...items];for(let index=result.length-1;index>0;index-=1){const swap=Math.floor(Math.random()*(index+1));[result[index],result[swap]]=[result[swap],result[index]];}return result;}
 
 function player(id:string,name:string,life:number,isAI:boolean):PlayerState{
-  if(!isAI)return{id,name,isAI,life,handCount:0,libraryCount:undefined,graveyard:[],exile:[],battlefield:[],commanderTax:0,commanderDamage:{},availableMana:0};
-  const built=buildCommanderAIDeck();
-  const hand=built.deck.slice(0,7);
-  const library=built.deck.slice(7);
-  const definition:CardDefinition={id:`ai-commander-${built.commander.id}`,name:built.commander.name,typeLine:built.commander.typeLine,oracleText:built.commander.oracleText,colors:built.commander.colorIdentity,colorIdentity:built.commander.colorIdentity,power:String(built.commander.power),toughness:String(built.commander.toughness)};
-  const commander=createCardInstance(definition,id,'command');
-  commander.isCommander=true;
-  return{id,name,isAI,life,handCount:hand.length,libraryCount:library.length,graveyard:[],exile:[],battlefield:[],commander,commanderTax:0,commanderDamage:{},availableMana:0,aiLibrary:library,aiHand:hand,aiLandsPlayed:0};
+ if(!isAI)return{id,name,isAI,life,handCount:0,libraryCount:undefined,graveyard:[],exile:[],battlefield:[],commanderTax:0,commanderDamage:{},availableMana:0};
+ const built=buildCommanderAIDeck(),hand=built.deck.slice(0,7),library=built.deck.slice(7);
+ const definition:CardDefinition={id:`ai-commander-${built.commander.id}`,name:built.commander.name,typeLine:built.commander.typeLine,oracleText:built.commander.oracleText,colors:built.commander.colorIdentity,colorIdentity:built.commander.colorIdentity,power:String(built.commander.power),toughness:String(built.commander.toughness)};
+ const commander=createCardInstance(definition,id,'command');commander.isCommander=true;
+ return{id,name,isAI,life,handCount:hand.length,libraryCount:library.length,graveyard:[],exile:[],battlefield:[],commander,commanderTax:0,commanderDamage:{},availableMana:0,aiLibrary:library,aiHand:hand,aiLandsPlayed:0,aiCommanderManaCost:built.commander.manaCost};
 }
-
-function createBaseGame(settings:GameSettings,human:PlayerState):GameState{
-  const opponents=Array.from({length:settings.aiOpponents},(_,i)=>player(`ai-${i+1}`,settings.aiOpponents===1?'Opponent':`Opponent ${i+1}`,settings.startingLife,true));
-  const now=new Date().toISOString();
-  const aiCommander=opponents[0]?.commander?.name;
-  return{id:uid(),settings,players:[human,...opponents],turnNumber:1,activePlayerId:'player',phase:'Main 1',spellsCastThisTurn:0,log:[{id:uid(),turn:1,actor:'Game',message:`Game started. Opponent chose ${aiCommander ?? 'a commander'}, shuffled a fresh 99-card library, and drew 7.`}],startedAt:now,updatedAt:now};
-}
-
-export function newGame(settings:GameSettings):GameState{
-  const human=player('player','You',settings.startingLife,false);
-  return createBaseGame({...settings,mode:settings.mode??'physical'},human);
-}
-
-export function newVirtualGame(settings:GameSettings,deck:SavedDeck):GameState{
-  const human=player('player','You',settings.startingLife,false);
-  const commander=createCardInstance(deck.commander,'player','command');
-  commander.isCommander=true;
-  human.commander=commander;
-  const shuffled=shuffle(deck.cards.map(definition=>createCardInstance(definition,'player','library')));
-  const hand=shuffled.splice(0,7).map(card=>({...card,zone:'hand' as const}));
-  human.virtualLibrary=shuffled;
-  human.virtualHand=hand;
-  human.handCount=hand.length;
-  human.libraryCount=shuffled.length;
-  human.landPlayedThisTurn=false;
-  const game=createBaseGame({...settings,mode:'virtual',deckId:deck.id},human);
-  game.log.unshift({id:uid(),turn:1,actor:'You',message:`Loaded ${deck.name}: ${deck.commander.name} + 99 cards. Drew an opening hand of 7.`});
-  return game;
-}
+function createBaseGame(settings:GameSettings,human:PlayerState):GameState{const opponents=Array.from({length:settings.aiOpponents},(_,i)=>player(`ai-${i+1}`,settings.aiOpponents===1?'Opponent':`Opponent ${i+1}`,settings.startingLife,true));const now=new Date().toISOString(),aiCommander=opponents[0]?.commander?.name;return{id:uid(),settings,players:[human,...opponents],turnNumber:1,activePlayerId:'player',phase:'Main 1',spellsCastThisTurn:0,log:[{id:uid(),turn:1,actor:'Game',message:`Game started. Smart Opponent chose ${aiCommander??'a commander'}, shuffled a fresh 99-card library, and drew 7.`}],startedAt:now,updatedAt:now};}
+export function newGame(settings:GameSettings):GameState{const human=player('player','You',settings.startingLife,false);return createBaseGame({...settings,mode:settings.mode??'physical'},human);}
+export function newVirtualGame(settings:GameSettings,deck:SavedDeck):GameState{const human=player('player','You',settings.startingLife,false),commander=createCardInstance(deck.commander,'player','command');commander.isCommander=true;human.commander=commander;const shuffled=shuffle(deck.cards.map(definition=>createCardInstance(definition,'player','library'))),hand=shuffled.splice(0,7).map(card=>({...card,zone:'hand' as const}));human.virtualLibrary=shuffled;human.virtualHand=hand;human.handCount=hand.length;human.libraryCount=shuffled.length;human.landPlayedThisTurn=false;const game=createBaseGame({...settings,mode:'virtual',deckId:deck.id},human);game.log.unshift({id:uid(),turn:1,actor:'You',message:`Loaded ${deck.name}: ${deck.commander.name} + 99 cards. Drew an opening hand of 7.`});return game;}
