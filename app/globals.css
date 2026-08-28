@@ -12,117 +12,69 @@ button, input, select { font: inherit; }
 .scrollbar-none { scrollbar-width:none; }
 .card-ratio { aspect-ratio: 488 / 680; }
 
-/* Utility player dashboard: keep the primary actions intentionally minimal. */
 .flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(3),
-.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(5) {
-  display: none;
-}
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(5) { display: none; }
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(2) > span:first-child { font-size: 0; }
+.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(2) > span:first-child::after { content: '☠'; font-size: 3rem; line-height: 1; }
 
-/* Replace the kill action's generic X with a skull while preserving its label/action. */
-.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(2) > span:first-child {
-  font-size: 0;
-}
-.flex.w-full.max-w-4xl.items-center.justify-center.gap-4.px-4 > button:nth-of-type(2) > span:first-child::after {
-  content: '☠';
-  font-size: 3rem;
-  line-height: 1;
-}
-
-/* Utility settings: one seamless horizontal surface. Keep a small inset on
-   phone-sized screens so rotated controls do not sit against a notch/bezel. */
-.snap-x.snap-mandatory {
-  gap: 0 !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-@media (max-width: 900px), (max-height: 900px) {
-  .snap-x.snap-mandatory {
-    width: 94% !important;
-    margin-inline: auto !important;
-  }
-}
-.snap-x.snap-mandatory > section {
-  width: 100% !important;
-  min-width: 100% !important;
-  flex-basis: 100% !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-}
-
-/* The document-level iOS gesture helper owns horizontal swipes. Keeping touch
-   handling permissive here lets a swipe begin directly over buttons/counters. */
+.snap-x.snap-mandatory { gap: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+@media (max-width: 900px), (max-height: 900px) { .snap-x.snap-mandatory { width: 94% !important; margin-inline: auto !important; } }
+.snap-x.snap-mandatory > section { width: 100% !important; min-width: 100% !important; flex-basis: 100% !important; border-radius: 0 !important; background: transparent !important; }
 .snap-x.snap-mandatory,
 .snap-x.snap-mandatory > section,
 .snap-x.snap-mandatory > section > div,
 .snap-x.snap-mandatory button,
 .snap-x.snap-mandatory a,
-.snap-x.snap-mandatory [role="button"] {
-  touch-action: pan-x pan-y !important;
-}
-
-/* Each local player card is a size container. On crowded 5–6 player layouts,
-   compact the swipe-up settings surface to the card instead of the device. */
-article:has([data-drawer-handle]) {
-  container-type: size;
-}
+.snap-x.snap-mandatory [role="button"] { touch-action: pan-x pan-y !important; }
+article:has([data-drawer-handle]) { container-type: size; }
 @container (max-height: 330px) {
-  .snap-x.snap-mandatory > section {
-    padding: .35rem !important;
-  }
-  .snap-x.snap-mandatory > section > div:first-child {
-    margin-bottom: .25rem !important;
-    font-size: .55rem !important;
-    line-height: .7rem !important;
-  }
-  .snap-x.snap-mandatory button {
-    min-height: 1.9rem !important;
-  }
-  .snap-x.snap-mandatory .h-11,
-  .snap-x.snap-mandatory .h-12,
-  .snap-x.snap-mandatory .h-14 {
-    height: 2rem !important;
-  }
+  .snap-x.snap-mandatory > section { padding: .35rem !important; }
+  .snap-x.snap-mandatory > section > div:first-child { margin-bottom: .25rem !important; font-size: .55rem !important; line-height: .7rem !important; }
+  .snap-x.snap-mandatory button { min-height: 1.9rem !important; }
+  .snap-x.snap-mandatory .h-11, .snap-x.snap-mandatory .h-12, .snap-x.snap-mandatory .h-14 { height: 2rem !important; }
   .snap-x.snap-mandatory .gap-5 { gap: .45rem !important; }
   .snap-x.snap-mandatory .gap-4 { gap: .35rem !important; }
   .snap-x.snap-mandatory .gap-3 { gap: .3rem !important; }
-  .snap-x.snap-mandatory .mt-4,
-  .snap-x.snap-mandatory .mt-5,
-  .snap-x.snap-mandatory .mt-6 { margin-top: .35rem !important; }
-  .snap-x.snap-mandatory .p-4,
-  .snap-x.snap-mandatory .p-3 { padding: .4rem !important; }
-  .snap-x.snap-mandatory svg {
-    max-width: 1.55rem;
-    max-height: 1.55rem;
-  }
+  .snap-x.snap-mandatory .mt-4, .snap-x.snap-mandatory .mt-5, .snap-x.snap-mandatory .mt-6 { margin-top: .35rem !important; }
+  .snap-x.snap-mandatory .p-4, .snap-x.snap-mandatory .p-3 { padding: .4rem !important; }
+  .snap-x.snap-mandatory svg { max-width: 1.55rem; max-height: 1.55rem; }
   .snap-x.snap-mandatory .text-lg { font-size: .9rem !important; line-height: 1.1rem !important; }
   .snap-x.snap-mandatory .text-sm { font-size: .7rem !important; line-height: .9rem !important; }
   .snap-x.snap-mandatory .text-xs { font-size: .6rem !important; line-height: .75rem !important; }
 }
 @container (max-height: 230px) {
   .snap-x.snap-mandatory > section { padding: .2rem !important; }
-  .snap-x.snap-mandatory .gap-3,
-  .snap-x.snap-mandatory .gap-4,
-  .snap-x.snap-mandatory .gap-5 { gap: .2rem !important; }
+  .snap-x.snap-mandatory .gap-3, .snap-x.snap-mandatory .gap-4, .snap-x.snap-mandatory .gap-5 { gap: .2rem !important; }
   .snap-x.snap-mandatory button { min-height: 1.65rem !important; }
   .snap-x.snap-mandatory svg { max-width: 1.25rem; max-height: 1.25rem; }
 }
-
-/* When the settings surface faces left/right, size its pre-rotation box to the
-   player's actual viewport. This prevents the rotated scroller from being
-   clipped by the narrower, unrotated box. */
 .absolute.inset-0.overflow-hidden:has(> div[style*="rotate(90deg)"].absolute.inset-0),
-.absolute.inset-0.overflow-hidden:has(> div[style*="rotate(270deg)"].absolute.inset-0) {
-  container-type: size;
-}
-.absolute.inset-0.overflow-hidden > div[style*="rotate(90deg)"].absolute.inset-0 {
-  inset: 50% auto auto 50% !important;
-  width: 100cqh !important;
-  height: 100cqw !important;
-  transform: translate(-50%, -50%) rotate(90deg) !important;
-}
-.absolute.inset-0.overflow-hidden > div[style*="rotate(270deg)"].absolute.inset-0 {
-  inset: 50% auto auto 50% !important;
-  width: 100cqh !important;
-  height: 100cqw !important;
-  transform: translate(-50%, -50%) rotate(270deg) !important;
+.absolute.inset-0.overflow-hidden:has(> div[style*="rotate(270deg)"].absolute.inset-0) { container-type: size; }
+.absolute.inset-0.overflow-hidden > div[style*="rotate(90deg)"].absolute.inset-0 { inset: 50% auto auto 50% !important; width: 100cqh !important; height: 100cqw !important; transform: translate(-50%, -50%) rotate(90deg) !important; }
+.absolute.inset-0.overflow-hidden > div[style*="rotate(270deg)"].absolute.inset-0 { inset: 50% auto auto 50% !important; width: 100cqh !important; height: 100cqw !important; transform: translate(-50%, -50%) rotate(270deg) !important; }
+
+/* Desktop practice table: use the viewport as a game board rather than a document. */
+@media (min-width: 1280px) {
+  body:has(.practice-pass-turn) { height: 100dvh; overflow: hidden; }
+  main:has(.practice-pass-turn) { width: 95vw !important; max-width: none !important; height: 100dvh; min-height: 0 !important; overflow: hidden; padding-bottom: .5rem !important; }
+  main:has(.practice-pass-turn) > header { height: 3.25rem; padding-block: .35rem !important; }
+  main:has(.practice-pass-turn) > div.grid { height: calc(100dvh - 3.75rem); grid-template-columns: minmax(0, 1fr) minmax(330px, 25vw) !important; gap: .75rem !important; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child { display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto; gap: .6rem; min-height: 0; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(1),
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(2) { display: grid; grid-template-columns: 175px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: .65rem; min-height: 0; overflow: hidden; padding: .55rem !important; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(1) > div:first-child,
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(2) > div:first-child { grid-column: 1 / -1; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(1) > section,
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(2) > section { grid-column: 1; grid-row: 2; align-self: stretch; min-width: 0; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(1) > section + div,
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(2) > section + div { grid-column: 2; grid-row: 2; min-height: 0 !important; overflow-y: auto; padding-block: .35rem !important; }
+  main:has(.practice-pass-turn) .min-h-40 { min-height: 0 !important; }
+  main:has(.practice-pass-turn) .min-h-28 { min-height: 5.5rem !important; }
+  main:has(.practice-pass-turn) .min-h-20 { min-height: 4rem !important; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:nth-of-type(2) > div:last-child { grid-column: 2; grid-row: 3; }
+  main:has(.practice-pass-turn) > div.grid > div:first-child > section:last-child { display: none; }
+  main:has(.practice-pass-turn) .practice-pass-turn { position: fixed; right: 2.5vw; top: 6.7rem; z-index: 30; width: 25vw; max-width: none; margin: 0 !important; border-radius: .75rem; }
+  main:has(.practice-pass-turn) > div.grid > aside { min-height: 0; height: 100%; }
+  main:has(.practice-pass-turn) > div.grid > aside > div { position: static !important; height: 100%; min-height: 0; }
+  main:has(.practice-pass-turn) > div.grid > aside > div > :last-child { min-height: 0; overflow-y: auto; margin-top: 3.75rem; }
 }
