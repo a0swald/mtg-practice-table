@@ -45,6 +45,8 @@ export function continueAITurn(game:GameState,aiId:string){return chooseMainPhas
 export function runAITurn(input:GameState,aiId:string):GameState{
  const game=structuredClone(input),ai=game.players.find(p=>p.id===aiId);if(!ai)return game;
  ai.battlefield.forEach(card=>{card.tapped=false;if(card.summoningSick)card.summoningSick=false;});
+ const stalled=aiTurnNumber(game.turnNumber)>=3&&(ai.aiLandsPlayed??0)===0&&!(ai.aiHand??[]).some(card=>card.kind==='land');
+ if(stalled){const recoveryIndex=ai.aiLibrary?.findIndex(card=>card.kind==='land')??-1;if(recoveryIndex>=0){const [land]=ai.aiLibrary!.splice(recoveryIndex,1);ai.aiHand?.push(land);game.log.push({id:uid(),turn:game.turnNumber,actor:'Smart Opponent',message:`Recovered a stalled opening hand by finding ${land.name}.`});}}
  if(ai.aiLibrary?.length){const drawn=ai.aiLibrary.shift();if(drawn)ai.aiHand?.push(drawn);}
  ai.handCount=ai.aiHand?.length??ai.handCount+1;ai.libraryCount=ai.aiLibrary?.length??ai.libraryCount;
  const landIndex=ai.aiHand?.findIndex(c=>c.kind==='land')??-1;if(landIndex>=0){const [land]=ai.aiHand!.splice(landIndex,1);ai.aiLandsPlayed=(ai.aiLandsPlayed??0)+1;ai.handCount=ai.aiHand!.length;game.log.push({id:uid(),turn:game.turnNumber,actor:ai.name,message:`Played ${land.name}.`});}
