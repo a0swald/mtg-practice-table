@@ -117,6 +117,7 @@ function BattlefieldSection({
             <CardVisual
               key={card.instanceId}
               card={card}
+              compactArt
               selected={selectedIds.includes(card.instanceId)}
               combatUnavailable={combatMode && combatUnavailableIds.includes(card.instanceId)}
               onClick={() => onCard?.(card)}

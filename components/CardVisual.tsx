@@ -7,11 +7,13 @@ export function CardVisual({
   onClick,
   selected = false,
   combatUnavailable = false,
+  compactArt = false,
 }:{
   card: CardInstance;
   onClick?: () => void;
   selected?: boolean;
   combatUnavailable?: boolean;
+  compactArt?: boolean;
 }) {
   const stats = currentStats(card);
   const qty = card.tokenQuantity ?? 1;
@@ -27,9 +29,13 @@ export function CardVisual({
       aria-disabled={combatUnavailable}
       className={`relative shrink-0 ${card.tapped ? 'mx-5 w-28 translate-y-4 rotate-90' : 'w-24'} transition-all ${selected ? 'rounded-xl ring-4 ring-emerald-400' : ''} ${combatUnavailable ? 'cursor-not-allowed opacity-40 grayscale-[.45]' : ''}`}
     >
-      <div className="card-ratio overflow-hidden rounded-[8%] border border-white/20 bg-zinc-800 shadow-lg">
+      <div className={`${compactArt ? 'aspect-[488/430]' : 'card-ratio'} overflow-hidden rounded-[8%] border border-white/20 bg-zinc-800 shadow-lg`}>
         {card.definition?.imageUrl ? (
-          <img src={card.definition.imageUrl} alt={card.name} className="h-full w-full object-cover" />
+          <img
+            src={card.definition.imageUrl}
+            alt={card.name}
+            className={`h-full w-full object-cover ${compactArt ? 'object-top' : ''}`}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-2 text-center">
             <div className="text-xs font-black">{card.name}</div>
