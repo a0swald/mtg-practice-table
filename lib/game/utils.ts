@@ -13,11 +13,16 @@ function shuffle<T>(items:T[]):T[]{const result=[...items];for(let index=result.
 
 function player(id:string,name:string,life:number,isAI:boolean):PlayerState{
  if(!isAI)return{id,name,isAI,life,handCount:0,libraryCount:undefined,graveyard:[],exile:[],battlefield:[],commanderTax:0,commanderDamage:{},availableMana:0};
- const built=buildCommanderAIDeck(),hand=built.deck.slice(0,7),library=built.deck.slice(7);
+ const built=buildCommanderAIDeck();
+ const lands=built.deck.filter(card=>card.kind==='land');
+ const spells=built.deck.filter(card=>card.kind!=='land');
+ const hand=shuffle([...lands.slice(0,3),...spells.slice(0,4)]);
+ const openingIds=new Set(hand.map(card=>card.id));
+ const library=shuffle(built.deck.filter(card=>!openingIds.has(card.id)));
  const definition:CardDefinition={id:`ai-commander-${built.commander.id}`,name:built.commander.name,typeLine:built.commander.typeLine,oracleText:built.commander.oracleText,colors:built.commander.colorIdentity,colorIdentity:built.commander.colorIdentity,power:String(built.commander.power),toughness:String(built.commander.toughness)};
  const commander=createCardInstance(definition,id,'command');commander.isCommander=true;
  return{id,name,isAI,life,handCount:hand.length,libraryCount:library.length,graveyard:[],exile:[],battlefield:[],commander,commanderTax:0,commanderDamage:{},availableMana:0,aiLibrary:library,aiHand:hand,aiLandsPlayed:0,aiCommanderManaCost:built.commander.manaCost};
 }
-function createBaseGame(settings:GameSettings,human:PlayerState):GameState{const opponents=Array.from({length:settings.aiOpponents},(_,i)=>player(`ai-${i+1}`,settings.aiOpponents===1?'Opponent':`Opponent ${i+1}`,settings.startingLife,true));const now=new Date().toISOString(),aiCommander=opponents[0]?.commander?.name;return{id:uid(),settings,players:[human,...opponents],turnNumber:1,activePlayerId:'player',phase:'Main 1',spellsCastThisTurn:0,log:[{id:uid(),turn:1,actor:'Game',message:`Game started. Smart Opponent chose ${aiCommander??'a commander'}, shuffled a fresh 99-card library, and drew 7.`}],startedAt:now,updatedAt:now};}
+function createBaseGame(settings:GameSettings,human:PlayerState):GameState{const opponents=Array.from({length:settings.aiOpponents},(_,i)=>player(`ai-${i+1}`,settings.aiOpponents===1?'Opponent':`Opponent ${i+1}`,settings.startingLife,true));const now=new Date().toISOString(),aiCommander=opponents[0]?.commander?.name;return{id:uid(),settings,players:[human,...opponents],turnNumber:1,activePlayerId:'player',phase:'Main 1',spellsCastThisTurn:0,log:[{id:uid(),turn:1,actor:'Game',message:`Game started. Smart Opponent chose ${aiCommander??'a commander'}, shuffled a fresh 99-card library, and drew a playable opening 7.`}],startedAt:now,updatedAt:now};}
 export function newGame(settings:GameSettings):GameState{const human=player('player','You',settings.startingLife,false);return createBaseGame({...settings,mode:settings.mode??'physical'},human);}
 export function newVirtualGame(settings:GameSettings,deck:SavedDeck):GameState{const human=player('player','You',settings.startingLife,false),commander=createCardInstance(deck.commander,'player','command');commander.isCommander=true;human.commander=commander;const shuffled=shuffle(deck.cards.map(definition=>createCardInstance(definition,'player','library'))),hand=shuffled.splice(0,7).map(card=>({...card,zone:'hand' as const}));human.virtualLibrary=shuffled;human.virtualHand=hand;human.handCount=hand.length;human.libraryCount=shuffled.length;human.landPlayedThisTurn=false;const game=createBaseGame({...settings,mode:'virtual',deckId:deck.id},human);game.log.unshift({id:uid(),turn:1,actor:'You',message:`Loaded ${deck.name}: ${deck.commander.name} + 99 cards. Drew an opening hand of 7.`});return game;}
