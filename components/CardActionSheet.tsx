@@ -3,12 +3,20 @@ import type { CardInstance } from '@/types/card';
 
 export function CardActionSheet({card,onUpdate,onMove,onClose}:{card?:CardInstance;onUpdate:(patch:Partial<CardInstance>,log:string)=>void;onMove:(zone:'hand'|'graveyard'|'exile')=>void;onClose:()=>void}){
  if(!card)return null;
+ const persistentPower=card.customCounters.find(counter=>counter.id==='persistent-power')?.amount??0;
+ const setPersistentPower=(amount:number)=>{
+  const remaining=card.customCounters.filter(counter=>counter.id!=='persistent-power');
+  const customCounters=amount>0?[...remaining,{id:'persistent-power',label:'+1/+0 persistent',amount}]:remaining;
+  onUpdate({customCounters},amount>persistentPower?`Increased ${card.name}'s persistent power bonus to +${amount}/+0.`:`Reduced ${card.name}'s persistent power bonus to +${amount}/+0.`);
+ };
  const actions=[
   [card.tapped?'Untap':'Tap',()=>onUpdate({tapped:!card.tapped},`${card.tapped?'Untapped':'Tapped'} ${card.name}.`)],
-  ['+1/+1',()=>onUpdate({plusOneCounters:card.plusOneCounters+1},`Added +1/+1 counter to ${card.name}.`)],
+  ['+1/+1 Counter',()=>onUpdate({plusOneCounters:card.plusOneCounters+1},`Added +1/+1 counter to ${card.name}.`)],
   ['Remove +1/+1',()=>onUpdate({plusOneCounters:Math.max(0,card.plusOneCounters-1)},`Removed +1/+1 counter from ${card.name}.`)],
-  ['+1/+0',()=>onUpdate({temporaryPowerModifier:card.temporaryPowerModifier+1},`${card.name} gets +1/+0 until end of turn.`)],
-  ['-1/+0',()=>onUpdate({temporaryPowerModifier:card.temporaryPowerModifier-1},`${card.name} gets -1/+0 until end of turn.`)],
+  ['+1/+0 Persistent',()=>setPersistentPower(persistentPower+1)],
+  ['Remove +1/+0',()=>setPersistentPower(Math.max(0,persistentPower-1))],
+  ['+1/+0 This Turn',()=>onUpdate({temporaryPowerModifier:card.temporaryPowerModifier+1},`${card.name} gets +1/+0 until end of turn.`)],
+  ['-1/+0 This Turn',()=>onUpdate({temporaryPowerModifier:card.temporaryPowerModifier-1},`${card.name} gets -1/+0 until end of turn.`)],
   ['Add Damage',()=>onUpdate({damageMarked:card.damageMarked+1},`Marked 1 damage on ${card.name}.`)],
   ['Remove Damage',()=>onUpdate({damageMarked:Math.max(0,card.damageMarked-1)},`Removed 1 damage from ${card.name}.`)],
  ] as const;
