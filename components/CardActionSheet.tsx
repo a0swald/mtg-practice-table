@@ -7,6 +7,8 @@ export function CardActionSheet({card,onUpdate,onMove,onClose}:{card?:CardInstan
   [card.tapped?'Untap':'Tap',()=>onUpdate({tapped:!card.tapped},`${card.tapped?'Untapped':'Tapped'} ${card.name}.`)],
   ['+1/+1',()=>onUpdate({plusOneCounters:card.plusOneCounters+1},`Added +1/+1 counter to ${card.name}.`)],
   ['Remove +1/+1',()=>onUpdate({plusOneCounters:Math.max(0,card.plusOneCounters-1)},`Removed +1/+1 counter from ${card.name}.`)],
+  ['+1/+0',()=>onUpdate({temporaryPowerModifier:card.temporaryPowerModifier+1},`${card.name} gets +1/+0 until end of turn.`)],
+  ['-1/+0',()=>onUpdate({temporaryPowerModifier:card.temporaryPowerModifier-1},`${card.name} gets -1/+0 until end of turn.`)],
   ['Add Damage',()=>onUpdate({damageMarked:card.damageMarked+1},`Marked 1 damage on ${card.name}.`)],
   ['Remove Damage',()=>onUpdate({damageMarked:Math.max(0,card.damageMarked-1)},`Removed 1 damage from ${card.name}.`)],
  ] as const;
